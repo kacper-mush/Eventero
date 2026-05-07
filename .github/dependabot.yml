@@ -7,6 +7,11 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    ignore:
+      # ESLint 10 broke eslint-plugin-react (used transitively by
+      # eslint-config-next). Hold on v9 until the Next.js config supports v10.
+      - dependency-name: eslint
+        update-types: [version-update:semver-major]
     groups:
       # Bundle minor + patch updates into one PR per group to reduce noise.
       # Major updates still come as individual PRs so they get reviewed carefully.

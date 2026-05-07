@@ -44,6 +44,13 @@ Useful local URLs while `supabase start` is running:
 
 Stop the stack when you're done: `supabase stop`.
 
+## Shipping a change
+
+1. Push a branch and open a PR against `main`.
+2. CI runs lint, typecheck, tests, and build; Vercel posts a Preview deployment URL on the PR — click through to try the change in a real environment.
+3. Get one approval on the review, then squash-merge.
+4. Merging to `main` triggers the production Vercel deploy and pushes any new SQL in `supabase/migrations/` to Supabase Cloud.
+
 ## Scripts
 
 | Command            | What it does                                          |

@@ -1,4 +1,5 @@
 # Deployment
+This document should be treated as a reference only. All the steps below were already completed and you don't have to perform them.
 
 One-time setup to wire production. After this, `git push` to `main` deploys both the app (Vercel) and any new schema migrations (Supabase, via GitHub Actions).
 
@@ -13,13 +14,29 @@ One-time setup to wire production. After this, `git push` to `main` deploys both
 
 1. Go to <https://supabase.com/dashboard> and create a project.
 2. Pick a region close to your users (or the demo location).
-3. Set a strong database password — **save it**, you'll need it for GitHub secrets.
+3. Set a strong database password — **save it in a password manager**, you'll need it for GitHub secrets and Supabase doesn't show it again.
 4. Wait ~1 minute for provisioning.
-5. From **Settings → API**, copy these for later:
-   - **Project URL** (looks like `https://xxxxx.supabase.co`)
-   - **`anon` public key**
 
-Also note the **project ref** — the `xxxxx` portion of the URL, also shown in **Settings → General**.
+### Security posture (set during or right after creation)
+
+In **Settings → Data API**:
+
+- **Enable Data API** — ✅ ON. Required for `supabase-js` to talk to the project.
+- **Automatically expose new tables** — ❌ OFF. New tables stay invisible to the Data API by default; you opt-in per table by adding `GRANT` statements in the migration. Smaller blast radius if a table is created by mistake.
+- **Enable automatic RLS** — ✅ ON. Every new table in `public` gets RLS enabled by default, so a forgotten policy means "no access" rather than "open to the world."
+
+These three combined = **secure-by-default**: tables are inaccessible, and RLS-protected if access is ever granted.
+
+### Values to save
+
+From **Settings → Data API**:
+
+- **Project URL** (looks like `https://xxxxx.supabase.co`)
+- **Publishable key** (the new name for what used to be the `anon` key — Supabase shows it in the API Keys section). Use this as the *value* of `NEXT_PUBLIC_SUPABASE_ANON_KEY`. The env-var name keeps the older "anon" label; only the value changed. Ignore the legacy `anon` / `service_role` keys and don't use the `default secret` (server-only).
+
+From **Settings → General**:
+
+- **Project ref** — the `xxxxx` portion of the URL.
 
 ## 2. Create the Vercel project
 
@@ -34,6 +51,8 @@ Also note the **project ref** — the `xxxxx` portion of the URL, also shown in 
 
 Once deployed, every push to `main` redeploys production and every PR gets its own preview URL automatically.
 
+> Heads up: preview deployments use the same Supabase project as production (since the env vars apply to all environments). Convenient for review fidelity, but writes from a preview hit the real DB. Add a separate "staging" Supabase project later if isolation matters.
+
 ## 3. Wire the GitHub migration workflow
 
 The `Deploy` workflow runs `supabase db push` whenever a merge to `main` touches `supabase/migrations/`. It needs three secrets.
@@ -47,6 +66,8 @@ In the GitHub repo: **Settings → Secrets and variables → Actions → New rep
 | `SUPABASE_DB_PASSWORD` | The password you set in step 1 | You saved it, right? Otherwise reset in **Settings → Database** |
 
 The workflow only triggers on changes under `supabase/migrations/`, so it sits idle until you actually add a migration.
+
+The Supabase CLI version used by the workflow is pinned in `.github/workflows/deploy.yml` (`version: x.y.z`) so production deploys are reproducible. Bump it intentionally when you want new CLI features — Dependabot doesn't track this string.
 
 ## 4. Link the Supabase CLI locally (one-off)
 

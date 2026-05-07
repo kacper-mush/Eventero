@@ -14,7 +14,7 @@ Documentation lives under [`docs/`](docs):
 
 - **Node.js** 20+
 - **Docker** (for local Supabase)
-- **Supabase CLI** — `npm i -g supabase` or `brew install supabase/tap/supabase`
+- **Supabase CLI** — `brew install supabase/tap/supabase`, or grab the latest `.deb`/`.rpm`/binary from the [releases page](https://github.com/supabase/cli/releases). 
 - **Git**
 
 ## Local development

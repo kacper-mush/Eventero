@@ -66,32 +66,12 @@ supabase/            Local Supabase config + migrations
 
 ## Deployment
 
-The MVP runs on two managed services. Both have free tiers sufficient for the demo.
-
-### One-time setup
-
-1. **Create a Supabase project** at <https://supabase.com>. Note the project URL and the `anon` key.
-2. **Push the repo to GitHub.**
-3. **Create a Vercel project** at <https://vercel.com/new>, import the GitHub repo, and add two environment variables:
-   - `NEXT_PUBLIC_SUPABASE_URL` — your Supabase project URL
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY` — your Supabase project's anon key
-4. Vercel auto-deploys on every push to `main` and creates a preview URL for every PR.
-
-### Pushing schema migrations to production
-
-When schema migrations exist, link the local CLI to the cloud project once, then push:
-
-```bash
-supabase link --project-ref <your-project-ref>
-supabase db push
-```
-
-A GitHub Action that runs `supabase db push` on merges to `main` is a follow-up — not wired up in this scaffold.
+Vercel hosts the Next.js app, Supabase Cloud hosts the database/auth/realtime, and a GitHub Actions workflow pushes schema migrations on merge to `main`. Full setup walkthrough in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
 ## What's in the scaffold and what's not
 
-**In:** Next.js 16 + TypeScript + Tailwind, Supabase browser client wired and verified on the home page, Vitest with one passing test, Playwright with one passing test, GitHub Actions CI (lint + typecheck + test + build), PWA manifest.
+**In:** Next.js 16 + TypeScript + Tailwind, Supabase browser client wired and verified on the home page, Vitest with one passing test, Playwright with one passing test, GitHub Actions CI (lint + typecheck + test + build), Dependabot, automatic migration push on merge to `main`, PWA manifest.
 
-**Not yet:** auth flows (magic-link login, callback, session-refreshing proxy), database schema and migrations, RLS policies, TanStack Query provider, shadcn/ui components, e2e tests in CI, automatic migration push on deploy.
+**Not yet:** auth flows (magic-link login, callback, session-refreshing proxy), database schema and migrations, RLS policies, TanStack Query provider, shadcn/ui components, e2e tests in CI.
 
 These are intentionally deferred until the scaffold itself is validated end-to-end.

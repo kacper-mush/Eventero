@@ -51,6 +51,8 @@ Stop the stack when you're done: `supabase stop`.
 3. Get one approval on the review, then squash-merge.
 4. Merging to `main` triggers the production Vercel deploy and pushes any new SQL in `supabase/migrations/` to Supabase Cloud.
 
+> **Preview deployments share the production database.** Migrations only run on merge to `main`, so a preview that depends on schema changes from its own PR will fail against prod's older schema. Land schema-only PRs first, then the feature PR that uses them — or accept a broken preview and verify locally.
+
 ## Scripts
 
 | Command            | What it does                                          |

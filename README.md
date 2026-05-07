@@ -2,7 +2,13 @@
 
 Event-based communicator. Per-event workspaces, group-scoped channels and task boards. MVP scaffold.
 
-For architecture and stack rationale, see [`docs/STACK.md`](docs/STACK.md).
+Documentation lives under [`docs/`](docs):
+
+- [`docs/STACK.md`](docs/STACK.md) — what's in the stack, one-liner *why* per choice.
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — how GitHub, Vercel, and Supabase fit together; runtime + deploy flows; failure modes.
+- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — one-time deployment setup runbook.
+- [`docs/REPO_CONFIG.md`](docs/REPO_CONFIG.md) — branch protection, merge style, secrets, Dependabot.
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — what's left to build, with open design decisions flagged.
 
 ## Prerequisites
 
@@ -37,6 +43,13 @@ Useful local URLs while `supabase start` is running:
 - Inbucket (catches outbound emails for magic-link flows): <http://localhost:54324>
 
 Stop the stack when you're done: `supabase stop`.
+
+## Shipping a change
+
+1. Push a branch and open a PR against `main`.
+2. CI runs lint, typecheck, tests, and build; Vercel posts a Preview deployment URL on the PR — click through to try the change in a real environment.
+3. Get one approval on the review, then squash-merge.
+4. Merging to `main` triggers the production Vercel deploy and pushes any new SQL in `supabase/migrations/` to Supabase Cloud.
 
 ## Scripts
 

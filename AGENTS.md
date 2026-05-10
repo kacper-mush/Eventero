@@ -6,6 +6,7 @@ Event-based communicator. Per-event workspaces, group-scoped channels and task b
 
 - [`docs/STACK.md`](docs/STACK.md) — what the stack is and why.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — how GitHub, Vercel, and Supabase fit together; runtime + deploy flows; failure modes.
+- [`docs/DATA_MODEL.md`](docs/DATA_MODEL.md) — tables, roles, RLS policies, realtime publication.
 - [`docs/REPO_CONFIG.md`](docs/REPO_CONFIG.md) — repo settings, branch protection, Dependabot.
 - [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — reference only; the deploy is already wired.
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — what's left to build, with open design decisions called out.

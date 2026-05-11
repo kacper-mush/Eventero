@@ -25,9 +25,13 @@ Authenticated `/dashboard` shell with a sidebar workspace list and a settings pa
 - **Hard delete** via `on delete cascade`. Deleting a workspace removes everything inside it (groups, channels, messages, tasks, memberships, invitations). No soft-delete column.
 - **Sole-owner leave** = delete the workspace. Owners with co-members must transfer first; the RPC raises if they don't.
 
-## 4. Groups & invitations
+## 4. Groups & invitations 🚧
 
 Within a workspace: create groups, send email-keyed invites with a predefined role, accept invites, manage group membership. The invite-accept flow is what bridges magic-link auth to membership rows.
+
+**Groups** ✅ — sidebar lists groups under the active workspace; workspace admins create/delete groups, managers rename and run member CRUD on their own group, plain group members see a read-only roster. RLS-gated end-to-end; group managers got `UPDATE` rights on `groups` via a follow-up migration (DELETE stayed admin-only). The sidebar slot is shared with future channels so Step 5 inherits the IA.
+
+**Invitations** — still pending. Until that ships, additional workspace members must be added via direct `workspace_memberships` inserts (seed/manual SQL); the group member picker reads from there.
 
 ## 5. Channels & messaging
 

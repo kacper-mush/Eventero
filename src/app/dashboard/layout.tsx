@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 
-import { getWorkspaces } from "./actions";
+import { getGroups, getWorkspaces } from "./actions";
 import { Sidebar } from "./sidebar";
 
 export default async function DashboardLayout({
@@ -17,12 +17,15 @@ export default async function DashboardLayout({
     redirect("/login");
   }
 
-  const workspaces = await getWorkspaces();
+  const [workspaces, groups] = await Promise.all([
+    getWorkspaces(),
+    getGroups(),
+  ]);
   const email = typeof claims.email === "string" ? claims.email : "";
 
   return (
     <div className="flex h-dvh w-full overflow-hidden">
-      <Sidebar workspaces={workspaces} email={email} />
+      <Sidebar workspaces={workspaces} groups={groups} email={email} />
       <main className="flex-1 overflow-y-auto bg-white">{children}</main>
     </div>
   );

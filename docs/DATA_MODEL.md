@@ -73,7 +73,7 @@ Policies route through these `SECURITY DEFINER` helper functions to avoid recurs
 | --- | --- | --- | --- |
 | `workspaces` | members | any authenticated user can create (becomes owner via trigger); admins can update | owner only |
 | `workspace_memberships` | self + workspace admins | workspace admins (only `admin`/`member` roles) | workspace admins (except `owner` row) |
-| `groups` | workspace members | workspace admins | workspace admins |
+| `groups` | workspace members | workspace admins + group managers (rename) | workspace admins |
 | `group_memberships` | self + group members + workspace admins | group managers + workspace admins (only for users already in the parent workspace) | group managers + workspace admins |
 | `channels` | workspace members (workspace-wide) or group members (group channels) | workspace admins (group channels must reference a group in the same workspace) | workspace admins |
 | `messages` | anyone who can read the parent channel | same (must set `author_id = auth.uid()`) | the author |

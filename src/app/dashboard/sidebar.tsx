@@ -5,22 +5,43 @@ import { usePathname } from "next/navigation";
 import { useActionState, useState } from "react";
 
 import {
+  createGroup,
   createWorkspace,
   signOut,
   type ActionState,
+  type Group,
   type Workspace,
 } from "./actions";
 import { Modal, SubmitButton } from "./ui";
 
 export function Sidebar({
   workspaces,
+  groups,
   email,
 }: {
   workspaces: Workspace[];
+  groups: Group[];
   email: string;
 }) {
   const pathname = usePathname();
-  const [open, setOpen] = useState(false);
+  const [newWorkspaceOpen, setNewWorkspaceOpen] = useState(false);
+  const [newGroupWorkspaceId, setNewGroupWorkspaceId] = useState<string | null>(
+    null,
+  );
+
+  const activeWorkspaceId = pathname?.match(
+    /^\/dashboard\/([0-9a-f-]{36})/,
+  )?.[1];
+  const activeGroupId = pathname?.match(
+    /\/groups\/([0-9a-f-]{36})/,
+  )?.[1];
+
+  const groupsByWorkspace = new Map<string, Group[]>();
+  for (const g of groups) {
+    const list = groupsByWorkspace.get(g.workspace_id) ?? [];
+    list.push(g);
+    groupsByWorkspace.set(g.workspace_id, list);
+  }
 
   return (
     <aside className="flex w-64 shrink-0 flex-col bg-brand-600 text-white">
@@ -39,7 +60,7 @@ export function Sidebar({
         </span>
         <button
           type="button"
-          onClick={() => setOpen(true)}
+          onClick={() => setNewWorkspaceOpen(true)}
           aria-label="Create workspace"
           className="flex h-6 w-6 items-center justify-center rounded text-base font-bold transition hover:bg-white/10"
         >
@@ -53,18 +74,68 @@ export function Sidebar({
         ) : (
           <ul className="flex flex-col gap-1">
             {workspaces.map((ws) => {
-              const active = pathname?.startsWith(`/dashboard/${ws.id}`);
+              const isActive = activeWorkspaceId === ws.id;
+              const workspaceGroups = groupsByWorkspace.get(ws.id) ?? [];
+              const settingsHref = `/dashboard/${ws.id}`;
+              const onSettings =
+                isActive && !pathname?.includes("/groups/");
               return (
                 <li key={ws.id}>
                   <Link
-                    href={`/dashboard/${ws.id}`}
-                    aria-current={active ? "page" : undefined}
+                    href={settingsHref}
+                    aria-current={onSettings ? "page" : undefined}
                     className={`block truncate rounded px-3 py-2 text-sm font-medium transition ${
-                      active ? "bg-white/20" : "hover:bg-white/10"
+                      onSettings ? "bg-white/20" : "hover:bg-white/10"
                     }`}
                   >
                     {ws.name}
                   </Link>
+
+                  {isActive && (
+                    <div className="mt-1 mb-2 ml-2 border-l border-white/15 pl-2">
+                      <div className="flex items-center justify-between px-1 py-1">
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-white/60">
+                          Groups
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setNewGroupWorkspaceId(ws.id)}
+                          aria-label="Create group"
+                          className="flex h-5 w-5 items-center justify-center rounded text-sm font-bold transition hover:bg-white/10"
+                        >
+                          +
+                        </button>
+                      </div>
+                      {workspaceGroups.length === 0 ? (
+                        <p className="px-1 py-1 text-[11px] text-white/60">
+                          No groups yet.
+                        </p>
+                      ) : (
+                        <ul className="flex flex-col gap-0.5">
+                          {workspaceGroups.map((g) => {
+                            const onGroup = activeGroupId === g.id;
+                            return (
+                              <li key={g.id}>
+                                <Link
+                                  href={`/dashboard/${ws.id}/groups/${g.id}`}
+                                  aria-current={
+                                    onGroup ? "page" : undefined
+                                  }
+                                  className={`block truncate rounded px-2 py-1 text-xs transition ${
+                                    onGroup
+                                      ? "bg-white/20 font-semibold"
+                                      : "hover:bg-white/10"
+                                  }`}
+                                >
+                                  # {g.name}
+                                </Link>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </div>
+                  )}
                 </li>
               );
             })}
@@ -87,7 +158,15 @@ export function Sidebar({
         </button>
       </form>
 
-      {open && <CreateWorkspaceDialog onClose={() => setOpen(false)} />}
+      {newWorkspaceOpen && (
+        <CreateWorkspaceDialog onClose={() => setNewWorkspaceOpen(false)} />
+      )}
+      {newGroupWorkspaceId && (
+        <CreateGroupDialog
+          workspaceId={newGroupWorkspaceId}
+          onClose={() => setNewGroupWorkspaceId(null)}
+        />
+      )}
     </aside>
   );
 }
@@ -109,6 +188,50 @@ function CreateWorkspaceDialog({ onClose }: { onClose: () => void }) {
             autoFocus
             maxLength={80}
             placeholder="e.g. Summer Festival 2026"
+            className="rounded border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
+          />
+        </label>
+        {state?.error && (
+          <p className="text-xs text-red-600">{state.error}</p>
+        )}
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded border border-neutral-300 px-3 py-1.5 text-sm font-medium"
+          >
+            Cancel
+          </button>
+          <SubmitButton>Create</SubmitButton>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function CreateGroupDialog({
+  workspaceId,
+  onClose,
+}: {
+  workspaceId: string;
+  onClose: () => void;
+}) {
+  const [state, action] = useActionState<ActionState, FormData>(
+    createGroup.bind(null, workspaceId),
+    null,
+  );
+
+  return (
+    <Modal title="Create group" onClose={onClose}>
+      <form action={action} className="flex flex-col gap-3">
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-medium">Name</span>
+          <input
+            name="name"
+            required
+            autoFocus
+            maxLength={80}
+            placeholder="e.g. Catering, Stage Crew"
             className="rounded border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
           />
         </label>

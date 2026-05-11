@@ -16,6 +16,8 @@ export type WorkspaceMember = {
   role: "owner" | "admin" | "member";
 };
 
+export type Group = { id: string; workspace_id: string; name: string };
+
 const nameSchema = z
   .string()
   .trim()
@@ -39,6 +41,16 @@ export async function getWorkspaces(): Promise<Workspace[]> {
   const { data, error } = await supabase
     .from("workspaces")
     .select("id, name")
+    .order("name", { ascending: true });
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+export async function getGroups(): Promise<Group[]> {
+  const { supabase } = await requireUser();
+  const { data, error } = await supabase
+    .from("groups")
+    .select("id, workspace_id, name")
     .order("name", { ascending: true });
   if (error) throw new Error(error.message);
   return data ?? [];
@@ -164,6 +176,30 @@ export async function transferOwnership(
   revalidatePath(`/dashboard/${id.data}`);
   revalidatePath("/dashboard", "layout");
   return { ok: true };
+}
+
+export async function createGroup(
+  workspaceId: string,
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const { supabase } = await requireUser();
+
+  const id = uuidSchema.safeParse(workspaceId);
+  const name = nameSchema.safeParse(formData.get("name"));
+  if (!id.success) return { ok: false, error: "Invalid workspace" };
+  if (!name.success) {
+    return { ok: false, error: name.error.issues[0]?.message };
+  }
+
+  const groupId = crypto.randomUUID();
+  const { error } = await supabase
+    .from("groups")
+    .insert({ id: groupId, workspace_id: id.data, name: name.data });
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/dashboard", "layout");
+  redirect(`/dashboard/${id.data}/groups/${groupId}`);
 }
 
 export async function signOut() {

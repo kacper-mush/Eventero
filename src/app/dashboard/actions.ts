@@ -66,16 +66,18 @@ export async function createWorkspace(
     return { ok: false, error: parsed.error.issues[0]?.message };
   }
 
-  const { data, error } = await supabase
+  // 1. Generate the ID ahead of time
+  const workspaceId = crypto.randomUUID();
+
+  // 2. Insert without calling .select().single()
+  const { error } = await supabase
     .from("workspaces")
-    .insert({ name: parsed.data, created_by: userId })
-    .select("id")
-    .single();
+    .insert({ id: workspaceId, name: parsed.data, created_by: userId });
 
   if (error) return { ok: false, error: error.message };
 
   revalidatePath("/dashboard", "layout");
-  redirect(`/dashboard/${data.id}`);
+  redirect(`/dashboard/${workspaceId}`);
 }
 
 export async function updateWorkspace(

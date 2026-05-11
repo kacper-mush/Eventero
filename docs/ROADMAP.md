@@ -17,12 +17,13 @@ The foundation everything else depends on. Tables for workspaces, memberships, g
 
 Magic-link login page, auth callback route, session-refreshing proxy (`proxy.ts` in Next 16). Standard `@supabase/ssr` Next.js pattern. Builds on the data model only insofar as the proxy needs to read the user's memberships for authorization checks.
 
-## 3. Workspace lifecycle
+## 3. Workspace lifecycle ✅
 
-Create workspace, list the workspaces the user belongs to, switch between them. Basic settings (rename, delete, transfer ownership).
+Authenticated `/dashboard` shell with a sidebar workspace list and a settings page per workspace (rename, transfer ownership, leave, delete). Ownership transfer and leaving go through `SECURITY DEFINER` RPCs (`transfer_workspace_ownership`, `leave_workspace`) so they can safely bypass the `workspace_memberships` RLS that forbids touching `owner` rows.
 
-**🔍 Decisions needed:**
-- Deletion semantics — soft delete vs hard delete; cascade rules for messages and tasks.
+**Decisions made:**
+- **Hard delete** via `on delete cascade`. Deleting a workspace removes everything inside it (groups, channels, messages, tasks, memberships, invitations). No soft-delete column.
+- **Sole-owner leave** = delete the workspace. Owners with co-members must transfer first; the RPC raises if they don't.
 
 ## 4. Groups & invitations
 

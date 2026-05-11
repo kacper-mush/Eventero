@@ -27,14 +27,16 @@ describe("auth callback route", () => {
     expect(response.headers.get("location")).toBe("https://eventero.test/event");
   });
 
-  it("falls back to / when next is invalid", async () => {
+  it("falls back to /dashboard when next is invalid", async () => {
     const response = await GET(
       new Request(
         "https://eventero.test/auth/callback?code=ok&next=%2F%2Fevil.example",
       ) as never,
     );
 
-    expect(response.headers.get("location")).toBe("https://eventero.test/");
+    expect(response.headers.get("location")).toBe(
+      "https://eventero.test/dashboard",
+    );
   });
 
   it("redirects to login with error when exchange fails", async () => {

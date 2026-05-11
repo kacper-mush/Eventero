@@ -47,9 +47,10 @@ Workspace admins always inherit management rights over groups within their works
 
 Every public table has RLS enabled and explicit `GRANT`s to the `authenticated` role (new tables in `public` are RLS-protected *and* hidden from the Data API by default).
 
-Policies route through five `SECURITY DEFINER` helper functions to avoid recursive policy evaluation:
+Policies route through these `SECURITY DEFINER` helper functions to avoid recursive policy evaluation:
 
-- `is_workspace_member(workspace_id)`
+- `is_workspace_member(workspace_id)` — current user
+- `is_workspace_member(workspace_id, user_id)` — an arbitrary user (used when a policy must check the *target* row's user, not the caller)
 - `is_workspace_admin(workspace_id)` — true for `owner` or `admin`
 - `is_workspace_owner(workspace_id)`
 - `is_group_member(group_id)`

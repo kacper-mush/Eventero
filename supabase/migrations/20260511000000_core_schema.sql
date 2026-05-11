@@ -21,6 +21,19 @@ begin
 end;
 $$;
 
+create or replace function public.is_workspace_member(_workspace_id uuid, _user_id uuid)
+returns boolean
+language plpgsql stable security definer
+set search_path = public
+as $$
+begin
+  return exists (
+    select 1 from public.workspace_memberships
+    where workspace_id = _workspace_id and user_id = _user_id
+  );
+end;
+$$;
+
 create or replace function public.is_workspace_admin(_workspace_id uuid)
 returns boolean
 language plpgsql stable security definer
@@ -257,11 +270,7 @@ create policy "managers and workspace admins add group members"
     and exists (
       select 1 from public.groups g
       where g.id = group_memberships.group_id
-        and exists (
-          select 1 from public.workspace_memberships wm
-          where wm.workspace_id = g.workspace_id
-            and wm.user_id = group_memberships.user_id
-        )
+        and public.is_workspace_member(g.workspace_id, group_memberships.user_id)
     )
   );
 
@@ -287,11 +296,7 @@ create policy "managers and workspace admins update group memberships"
     and exists (
       select 1 from public.groups g
       where g.id = group_memberships.group_id
-        and exists (
-          select 1 from public.workspace_memberships wm
-          where wm.workspace_id = g.workspace_id
-            and wm.user_id = group_memberships.user_id
-        )
+        and public.is_workspace_member(g.workspace_id, group_memberships.user_id)
     )
   );
 

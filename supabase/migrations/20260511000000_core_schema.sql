@@ -181,6 +181,7 @@ create table public.groups (
 );
 
 create index groups_workspace_idx on public.groups(workspace_id);
+-- Required for channels(group_id, workspace_id) composite foreign key.
 create unique index groups_id_workspace_idx on public.groups(id, workspace_id);
 
 alter table public.groups enable row level security;

@@ -115,6 +115,10 @@ create table public.workspace_memberships (
 create index workspace_memberships_user_idx
   on public.workspace_memberships(user_id);
 
+create unique index workspace_memberships_one_owner_per_workspace_idx
+  on public.workspace_memberships(workspace_id)
+  where role = 'owner';
+
 alter table public.workspace_memberships enable row level security;
 grant select, insert, update, delete on public.workspace_memberships to authenticated;
 
@@ -127,12 +131,21 @@ create policy "read workspace memberships"
 
 create policy "admins add workspace members"
   on public.workspace_memberships for insert to authenticated
-  with check (public.is_workspace_admin(workspace_id));
+  with check (
+    public.is_workspace_admin(workspace_id)
+    and role in ('admin', 'member')
+  );
 
 create policy "admins update workspace members"
   on public.workspace_memberships for update to authenticated
-  using (public.is_workspace_admin(workspace_id))
-  with check (public.is_workspace_admin(workspace_id));
+  using (
+    public.is_workspace_admin(workspace_id)
+    and role <> 'owner'
+  )
+  with check (
+    public.is_workspace_admin(workspace_id)
+    and role <> 'owner'
+  );
 
 create policy "admins remove non-owner workspace members"
   on public.workspace_memberships for delete to authenticated
@@ -168,6 +181,7 @@ create table public.groups (
 );
 
 create index groups_workspace_idx on public.groups(workspace_id);
+create unique index groups_id_workspace_idx on public.groups(id, workspace_id);
 
 alter table public.groups enable row level security;
 grant select, insert, update, delete on public.groups to authenticated;
@@ -221,11 +235,22 @@ create policy "read group memberships"
 create policy "managers and workspace admins add group members"
   on public.group_memberships for insert to authenticated
   with check (
-    public.is_group_manager(group_id)
-    or exists (
+    (
+      public.is_group_manager(group_id)
+      or exists (
+        select 1 from public.groups g
+        where g.id = group_memberships.group_id
+          and public.is_workspace_admin(g.workspace_id)
+      )
+    )
+    and exists (
       select 1 from public.groups g
       where g.id = group_memberships.group_id
-        and public.is_workspace_admin(g.workspace_id)
+        and exists (
+          select 1 from public.workspace_memberships wm
+          where wm.workspace_id = g.workspace_id
+            and wm.user_id = group_memberships.user_id
+        )
     )
   );
 
@@ -240,11 +265,22 @@ create policy "managers and workspace admins update group memberships"
     )
   )
   with check (
-    public.is_group_manager(group_id)
-    or exists (
+    (
+      public.is_group_manager(group_id)
+      or exists (
+        select 1 from public.groups g
+        where g.id = group_memberships.group_id
+          and public.is_workspace_admin(g.workspace_id)
+      )
+    )
+    and exists (
       select 1 from public.groups g
       where g.id = group_memberships.group_id
-        and public.is_workspace_admin(g.workspace_id)
+        and exists (
+          select 1 from public.workspace_memberships wm
+          where wm.workspace_id = g.workspace_id
+            and wm.user_id = group_memberships.user_id
+        )
     )
   );
 
@@ -268,9 +304,13 @@ create policy "managers and workspace admins remove group members"
 create table public.channels (
   id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references public.workspaces(id) on delete cascade,
-  group_id uuid references public.groups(id) on delete cascade,
+  group_id uuid,
   name text not null check (length(trim(name)) > 0),
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  constraint channels_group_workspace_fk
+    foreign key (group_id, workspace_id)
+    references public.groups(id, workspace_id)
+    on delete cascade
 );
 
 create index channels_workspace_idx on public.channels(workspace_id);
@@ -315,7 +355,7 @@ create index messages_channel_created_idx
   on public.messages(channel_id, created_at desc);
 
 alter table public.messages enable row level security;
-grant select, insert, update, delete on public.messages to authenticated;
+grant select, insert, delete on public.messages to authenticated;
 grant usage, select on sequence public.messages_id_seq to authenticated;
 
 create policy "members read messages in accessible channels"

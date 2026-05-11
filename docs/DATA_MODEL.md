@@ -34,8 +34,8 @@ auth.users ────┬──── workspaces ───── workspace_memb
 Two scopes, three concepts:
 
 - **Workspace role** (`workspace_memberships.role`): `owner`, `admin`, `member`.
-  - `owner` — one per workspace, created automatically when the workspace is inserted. Only an owner can delete the workspace. Ownership transfer is a deliberate later operation, not a plain UPDATE.
-  - `admin` — manages groups, channels, invitations, and other memberships (cannot delete the owner row).
+  - `owner` — exactly one per workspace, created automatically when the workspace is inserted. Only an owner can delete the workspace. Ownership transfer is a deliberate later operation, not a plain UPDATE.
+  - `admin` — manages groups, channels, invitations, and other memberships (cannot create/update/delete `owner` rows).
   - `member` — read access to the workspace shell and any groups they belong to.
 - **Group role** (`group_memberships.role`): `manager`, `member`.
   - `manager` — adds/removes members of the group, deletes tasks.
@@ -62,10 +62,10 @@ Policies route through five `SECURITY DEFINER` helper functions to avoid recursi
 | Surface | Read | Write | Delete |
 | --- | --- | --- | --- |
 | `workspaces` | members | any authenticated user can create (becomes owner via trigger); admins can update | owner only |
-| `workspace_memberships` | self + workspace admins | workspace admins | workspace admins (except `owner` row) |
+| `workspace_memberships` | self + workspace admins | workspace admins (only `admin`/`member` roles) | workspace admins (except `owner` row) |
 | `groups` | workspace members | workspace admins | workspace admins |
-| `group_memberships` | self + group members + workspace admins | group managers + workspace admins | group managers + workspace admins |
-| `channels` | workspace members (workspace-wide) or group members (group channels) | workspace admins | workspace admins |
+| `group_memberships` | self + group members + workspace admins | group managers + workspace admins (only for users already in the parent workspace) | group managers + workspace admins |
+| `channels` | workspace members (workspace-wide) or group members (group channels) | workspace admins (group channels must reference a group in the same workspace) | workspace admins |
 | `messages` | anyone who can read the parent channel | same (must set `author_id = auth.uid()`) | the author |
 | `tasks` | group members | group members | group managers |
 | `invitations` | workspace admins; the invitee can see their own pending invites by matching `auth.jwt() ->> 'email'` | workspace admins | workspace admins |

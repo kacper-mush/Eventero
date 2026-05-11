@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useState, useTransition } from "react";
 
 import type {
   ActionState,
@@ -35,10 +35,22 @@ export function GroupHeader({
   viewerLabel: string;
 }) {
   const [editing, setEditing] = useState(false);
-  const [state, action] = useActionState<ActionState, FormData>(
-    renameGroup.bind(null, workspaceId, groupId),
-    null,
-  );
+  const [error, setError] = useState<string | null>(null);
+  const [justSaved, setJustSaved] = useState(false);
+  const [isPending, startTransition] = useTransition();
+
+  function handleSubmit(formData: FormData) {
+    startTransition(async () => {
+      const result = await renameGroup(workspaceId, groupId, null, formData);
+      if (result?.ok) {
+        setError(null);
+        setEditing(false);
+        setJustSaved(true);
+      } else {
+        setError(result?.error ?? "Failed to rename group");
+      }
+    });
+  }
 
   if (editing && canRename) {
     return (
@@ -46,31 +58,30 @@ export function GroupHeader({
         <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
           Group
         </p>
-        <form
-          action={(formData) => {
-            action(formData);
-            setEditing(false);
-          }}
-          className="flex items-center gap-2"
-        >
+        <form action={handleSubmit} className="flex items-center gap-2">
           <input
             name="name"
             defaultValue={name}
             required
             autoFocus
             maxLength={80}
-            className="flex-1 rounded border border-neutral-300 bg-white px-3 py-2 text-lg font-bold text-brand-900 outline-none focus:border-brand-500"
+            disabled={isPending}
+            className="flex-1 rounded border border-neutral-300 bg-white px-3 py-2 text-lg font-bold text-brand-900 outline-none focus:border-brand-500 disabled:opacity-50"
           />
           <SubmitButton>Save</SubmitButton>
           <button
             type="button"
-            onClick={() => setEditing(false)}
-            className="rounded border border-neutral-300 px-3 py-1.5 text-sm font-medium"
+            onClick={() => {
+              setEditing(false);
+              setError(null);
+            }}
+            disabled={isPending}
+            className="rounded border border-neutral-300 px-3 py-1.5 text-sm font-medium disabled:opacity-50"
           >
             Cancel
           </button>
         </form>
-        {state?.error && <p className="text-xs text-red-600">{state.error}</p>}
+        {error && <p className="text-xs text-red-600">{error}</p>}
       </header>
     );
   }
@@ -85,7 +96,10 @@ export function GroupHeader({
         {canRename && (
           <button
             type="button"
-            onClick={() => setEditing(true)}
+            onClick={() => {
+              setEditing(true);
+              setJustSaved(false);
+            }}
             className="text-xs text-brand-700 underline-offset-2 hover:underline"
           >
             Rename
@@ -93,7 +107,7 @@ export function GroupHeader({
         )}
       </div>
       <p className="text-xs text-neutral-500">You are a {viewerLabel}.</p>
-      {state?.ok && <p className="text-xs text-green-700">Saved.</p>}
+      {justSaved && <p className="text-xs text-green-700">Saved.</p>}
     </header>
   );
 }
@@ -148,14 +162,14 @@ function MemberRow({
   isSelf: boolean;
   canManage: boolean;
 }) {
-  const [roleState, roleAction] = useActionState<ActionState, FormData>(
-    setGroupMemberRole.bind(null, workspaceId, groupId),
-    null,
-  );
-  const [removeState, removeAction] = useActionState<ActionState, FormData>(
-    removeGroupMember.bind(null, workspaceId, groupId),
-    null,
-  );
+  const [roleState, roleAction, rolePending] = useActionState<
+    ActionState,
+    FormData
+  >(setGroupMemberRole.bind(null, workspaceId, groupId), null);
+  const [removeState, removeAction, removePending] = useActionState<
+    ActionState,
+    FormData
+  >(removeGroupMember.bind(null, workspaceId, groupId), null);
 
   return (
     <li className="flex flex-wrap items-center justify-between gap-3 px-3 py-2 text-sm">
@@ -175,21 +189,48 @@ function MemberRow({
             <select
               name="role"
               defaultValue={member.role}
-              onChange={(e) => e.currentTarget.form?.requestSubmit()}
-              className="rounded border border-neutral-300 bg-white px-2 py-1 text-xs outline-none focus:border-brand-500"
+              disabled={rolePending}
+              onChange={(e) => {
+                const next = e.currentTarget.value;
+                const promoting =
+                  next === "manager" && member.role !== "manager";
+                const demotingSelf =
+                  isSelf && member.role === "manager" && next === "member";
+                const confirmMsg = promoting
+                  ? `Promote ${member.email} to manager? Managers can rename the group and add, remove, or re-role members.`
+                  : demotingSelf
+                    ? "Demote yourself? You'll lose manager rights on this group."
+                    : null;
+                if (confirmMsg && !window.confirm(confirmMsg)) {
+                  e.currentTarget.value = member.role;
+                  return;
+                }
+                e.currentTarget.form?.requestSubmit();
+              }}
+              className="rounded border border-neutral-300 bg-white px-2 py-1 text-xs outline-none focus:border-brand-500 disabled:opacity-50"
             >
               <option value="member">member</option>
               <option value="manager">manager</option>
             </select>
+            {rolePending && (
+              <span className="text-[10px] text-neutral-500">saving…</span>
+            )}
           </form>
 
           <form action={removeAction}>
             <input type="hidden" name="userId" value={member.user_id} />
             <button
               type="submit"
-              className="rounded border border-neutral-300 bg-white px-2 py-1 text-xs font-medium text-red-700 transition hover:bg-red-50"
+              disabled={removePending}
+              onClick={(e) => {
+                const msg = isSelf
+                  ? "Remove yourself from this group? You'll lose access until an admin or manager re-adds you."
+                  : `Remove ${member.email} from this group?`;
+                if (!window.confirm(msg)) e.preventDefault();
+              }}
+              className="rounded border border-neutral-300 bg-white px-2 py-1 text-xs font-medium text-red-700 transition hover:bg-red-50 disabled:opacity-50"
             >
-              Remove
+              {removePending ? "Removing…" : "Remove"}
             </button>
           </form>
 

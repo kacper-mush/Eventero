@@ -1,12 +1,4 @@
-import { redirect } from "next/navigation";
-
-import { createClient } from "@/lib/supabase/server";
-
-import {
-  getGroups,
-  getUnreadNotificationCount,
-  getWorkspaces,
-} from "./actions";
+import { getSidebarData } from "./actions";
 import { Sidebar } from "./sidebar";
 
 export default async function DashboardLayout({
@@ -14,27 +6,19 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createClient();
-  const { data, error } = await supabase.auth.getClaims();
-  const claims = data?.claims;
-  if (error || !claims) {
-    redirect("/login");
-  }
-
-  const [workspaces, groups, unreadNotificationCount] = await Promise.all([
-    getWorkspaces(),
-    getGroups(),
-    getUnreadNotificationCount(),
-  ]);
-  const email = typeof claims.email === "string" ? claims.email : "";
+  // Single auth + single round-trip for everything the sidebar needs. The
+  // shared getSidebarData() validates the session, redirects to /login on
+  // missing claims, and fans out the four queries in parallel.
+  const data = await getSidebarData();
 
   return (
     <div className="flex h-dvh w-full overflow-hidden">
       <Sidebar
-        workspaces={workspaces}
-        groups={groups}
-        email={email}
-        unreadNotificationCount={unreadNotificationCount}
+        workspaces={data.workspaces}
+        groups={data.groups}
+        email={data.email}
+        unreadNotificationCount={data.unreadNotificationCount}
+        adminWorkspaceIds={data.adminWorkspaceIds}
       />
       <main className="flex-1 overflow-y-auto bg-white">{children}</main>
     </div>

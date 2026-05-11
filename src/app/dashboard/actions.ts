@@ -29,31 +29,63 @@ const uuidSchema = z.string().uuid("Invalid id");
 async function requireUser() {
   const supabase = await createClient();
   const { data, error } = await supabase.auth.getClaims();
-  const userId = data?.claims?.sub;
+  const claims = data?.claims;
+  const userId = claims?.sub;
   if (error || !userId) {
     redirect("/login");
   }
-  return { supabase, userId };
+  const email = typeof claims.email === "string" ? claims.email : "";
+  return { supabase, userId, email };
 }
 
-export async function getWorkspaces(): Promise<Workspace[]> {
-  const { supabase } = await requireUser();
-  const { data, error } = await supabase
-    .from("workspaces")
-    .select("id, name")
-    .order("name", { ascending: true });
-  if (error) throw new Error(error.message);
-  return data ?? [];
-}
+export type SidebarData = {
+  email: string;
+  workspaces: Workspace[];
+  groups: Group[];
+  unreadNotificationCount: number;
+  // Workspaces where the current user is owner or admin. Used to gate UI
+  // controls that would otherwise hit an RLS error on submit.
+  adminWorkspaceIds: string[];
+};
 
-export async function getGroups(): Promise<Group[]> {
-  const { supabase } = await requireUser();
-  const { data, error } = await supabase
-    .from("groups")
-    .select("id, workspace_id, name")
-    .order("name", { ascending: true });
-  if (error) throw new Error(error.message);
-  return data ?? [];
+// One server call for everything the dashboard layout needs. Hits
+// supabase.auth.getClaims() exactly once (inside requireUser), then runs
+// the four data queries in parallel against the same authenticated client.
+export async function getSidebarData(): Promise<SidebarData> {
+  const { supabase, userId, email } = await requireUser();
+
+  const [workspacesRes, groupsRes, unreadRes, rolesRes] = await Promise.all([
+    supabase
+      .from("workspaces")
+      .select("id, name")
+      .order("name", { ascending: true }),
+    supabase
+      .from("groups")
+      .select("id, workspace_id, name")
+      .order("name", { ascending: true }),
+    supabase
+      .from("notifications")
+      .select("id", { count: "exact", head: true })
+      .is("read_at", null),
+    supabase
+      .from("workspace_memberships")
+      .select("workspace_id, role")
+      .eq("user_id", userId)
+      .in("role", ["owner", "admin"]),
+  ]);
+
+  if (workspacesRes.error) throw new Error(workspacesRes.error.message);
+  if (groupsRes.error) throw new Error(groupsRes.error.message);
+  if (unreadRes.error) throw new Error(unreadRes.error.message);
+  if (rolesRes.error) throw new Error(rolesRes.error.message);
+
+  return {
+    email,
+    workspaces: workspacesRes.data ?? [],
+    groups: groupsRes.data ?? [],
+    unreadNotificationCount: unreadRes.count ?? 0,
+    adminWorkspaceIds: (rolesRes.data ?? []).map((r) => r.workspace_id),
+  };
 }
 
 export async function getWorkspaceMembers(
@@ -274,16 +306,6 @@ export async function getNotifications(): Promise<Notification[]> {
   const { data, error } = await supabase.rpc("get_my_notifications");
   if (error) throw new Error(error.message);
   return (data ?? []) as Notification[];
-}
-
-export async function getUnreadNotificationCount(): Promise<number> {
-  const { supabase } = await requireUser();
-  const { count, error } = await supabase
-    .from("notifications")
-    .select("id", { count: "exact", head: true })
-    .is("read_at", null);
-  if (error) throw new Error(error.message);
-  return count ?? 0;
 }
 
 export async function sendWorkspaceInvitation(

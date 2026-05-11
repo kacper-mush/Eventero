@@ -19,11 +19,13 @@ export function Sidebar({
   groups,
   email,
   unreadNotificationCount,
+  adminWorkspaceIds,
 }: {
   workspaces: Workspace[];
   groups: Group[];
   email: string;
   unreadNotificationCount: number;
+  adminWorkspaceIds: string[];
 }) {
   const pathname = usePathname();
   const onNotifications = pathname === "/dashboard/notifications";
@@ -31,6 +33,7 @@ export function Sidebar({
   const [newGroupWorkspaceId, setNewGroupWorkspaceId] = useState<string | null>(
     null,
   );
+  const adminSet = new Set(adminWorkspaceIds);
 
   const activeWorkspaceId = pathname?.match(
     /^\/dashboard\/([0-9a-f-]{36})/,
@@ -115,14 +118,16 @@ export function Sidebar({
                         <span className="text-[10px] font-semibold uppercase tracking-wide text-white/60">
                           Groups
                         </span>
-                        <button
-                          type="button"
-                          onClick={() => setNewGroupWorkspaceId(ws.id)}
-                          aria-label="Create group"
-                          className="flex h-5 w-5 items-center justify-center rounded text-sm font-bold transition hover:bg-white/10"
-                        >
-                          +
-                        </button>
+                        {adminSet.has(ws.id) && (
+                          <button
+                            type="button"
+                            onClick={() => setNewGroupWorkspaceId(ws.id)}
+                            aria-label="Create group"
+                            className="flex h-5 w-5 items-center justify-center rounded text-sm font-bold transition hover:bg-white/10"
+                          >
+                            +
+                          </button>
+                        )}
                       </div>
                       {workspaceGroups.length === 0 ? (
                         <p className="px-1 py-1 text-[11px] text-white/60">

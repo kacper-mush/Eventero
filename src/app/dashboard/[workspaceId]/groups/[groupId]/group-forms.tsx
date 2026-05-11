@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState, useTransition } from "react";
+import { useActionState, useState } from "react";
 
 import type {
   ActionState,
@@ -35,21 +35,24 @@ export function GroupHeader({
   viewerNote: string;
 }) {
   const [editing, setEditing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [justSaved, setJustSaved] = useState(false);
-  const [isPending, startTransition] = useTransition();
+  const [state, action, isPending] = useActionState<ActionState, FormData>(
+    renameGroup.bind(null, workspaceId, groupId),
+    null,
+  );
 
-  function handleSubmit(formData: FormData) {
-    startTransition(async () => {
-      const result = await renameGroup(workspaceId, groupId, null, formData);
-      if (result?.ok) {
-        setError(null);
-        setEditing(false);
-        setJustSaved(true);
-      } else {
-        setError(result?.error ?? "Failed to rename group");
-      }
-    });
+  // React 19's "adjust state during render" pattern: when the action state
+  // identity changes and reports success, close the editor and show "Saved".
+  // revalidatePath inside the action streams a fresh RSC tree for this
+  // route, so the closed header re-renders with the updated `name` prop —
+  // no router.refresh() needed.
+  const [seenState, setSeenState] = useState<ActionState>(null);
+  if (state !== seenState) {
+    setSeenState(state);
+    if (state?.ok) {
+      setEditing(false);
+      setJustSaved(true);
+    }
   }
 
   if (editing && canRename) {
@@ -58,7 +61,7 @@ export function GroupHeader({
         <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
           Group
         </p>
-        <form action={handleSubmit} className="flex items-center gap-2">
+        <form action={action} className="flex items-center gap-2">
           <input
             name="name"
             defaultValue={name}
@@ -71,17 +74,14 @@ export function GroupHeader({
           <SubmitButton>Save</SubmitButton>
           <button
             type="button"
-            onClick={() => {
-              setEditing(false);
-              setError(null);
-            }}
+            onClick={() => setEditing(false)}
             disabled={isPending}
             className="rounded border border-neutral-300 px-3 py-1.5 text-sm font-medium disabled:opacity-50"
           >
             Cancel
           </button>
         </form>
-        {error && <p className="text-xs text-red-600">{error}</p>}
+        {state?.error && <p className="text-xs text-red-600">{state.error}</p>}
       </header>
     );
   }

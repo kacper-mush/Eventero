@@ -2,10 +2,13 @@ import { notFound, redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 
-import { getWorkspaceMembers } from "../actions";
+import {
+  getWorkspaceMembers,
+  getWorkspacePendingInvitations,
+} from "../actions";
 import {
   DeleteWorkspaceSection,
-  LeaveWorkspaceSection,
+  InviteMembersSection,
   RenameWorkspaceForm,
   TransferOwnershipSection,
 } from "./settings-forms";
@@ -36,9 +39,13 @@ export default async function WorkspaceSettingsPage({
   if (!me) notFound();
 
   const isOwner = me.role === "owner";
-  const canRename = me.role === "owner" || me.role === "admin";
+  const isAdmin = me.role === "owner" || me.role === "admin";
+  const canRename = isAdmin;
   const otherMembers = members.filter((m) => m.user_id !== userId);
-  const canLeave = !isOwner || otherMembers.length === 0;
+
+  const pendingInvitations = isAdmin
+    ? await getWorkspacePendingInvitations(workspaceId)
+    : [];
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-8 p-8">
@@ -57,6 +64,18 @@ export default async function WorkspaceSettingsPage({
           <RenameWorkspaceForm
             workspaceId={workspace.id}
             currentName={workspace.name}
+          />
+        </Section>
+      )}
+
+      {isAdmin && (
+        <Section
+          title="Invite members"
+          description="Invite someone with an existing Eventero account. They get an in-app notification to accept; invitations expire after 7 days."
+        >
+          <InviteMembersSection
+            workspaceId={workspace.id}
+            pendingInvitations={pendingInvitations}
           />
         </Section>
       )}
@@ -89,22 +108,6 @@ export default async function WorkspaceSettingsPage({
           />
         </Section>
       )}
-
-      <Section
-        title="Leave workspace"
-        description={
-          canLeave
-            ? "You will lose access immediately."
-            : "Transfer ownership before leaving."
-        }
-      >
-        <LeaveWorkspaceSection
-          workspaceId={workspace.id}
-          workspaceName={workspace.name}
-          canLeave={canLeave}
-          isSoleMember={isOwner && otherMembers.length === 0}
-        />
-      </Section>
 
       {isOwner && (
         <Section

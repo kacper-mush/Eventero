@@ -95,6 +95,8 @@ export async function addGroupMember(
   if (error) return { ok: false, error: error.message };
 
   revalidatePath(`/dashboard/${workspaceId}/groups/${grp.data}`);
+  // Membership change flips the sidebar's group list for the affected user.
+  revalidatePath("/dashboard", "layout");
   return { ok: true };
 }
 
@@ -119,6 +121,8 @@ export async function removeGroupMember(
   if (error) return { ok: false, error: error.message };
 
   revalidatePath(`/dashboard/${workspaceId}/groups/${grp.data}`);
+  // Membership change flips the sidebar's group list for the affected user.
+  revalidatePath("/dashboard", "layout");
   return { ok: true };
 }
 
@@ -145,5 +149,7 @@ export async function setGroupMemberRole(
   if (error) return { ok: false, error: error.message };
 
   revalidatePath(`/dashboard/${workspaceId}/groups/${grp.data}`);
+  // Membership change flips the sidebar's group list for the affected user.
+  revalidatePath("/dashboard", "layout");
   return { ok: true };
 }

@@ -1,4 +1,4 @@
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 
@@ -28,11 +28,19 @@ export default async function GroupPage({
     .eq("id", groupId)
     .maybeSingle();
   if (groupErr) throw new Error(groupErr.message);
-  if (!group || group.workspace_id !== workspaceId) notFound();
+
+  // If the user can't see this group (RLS filtered the row) or it doesn't
+  // belong to the workspace in the URL, bounce them to the workspace home
+  // rather than show a 404 — most stale URLs come from a sidebar entry that
+  // just disappeared after a removal, and the workspace page is the right
+  // landing spot.
+  if (!group || group.workspace_id !== workspaceId) {
+    redirect(`/dashboard/${workspaceId}`);
+  }
 
   const workspaceMembers = await getWorkspaceMembers(workspaceId);
   const me = workspaceMembers.find((m) => m.user_id === userId);
-  if (!me) notFound();
+  if (!me) redirect("/dashboard");
 
   const { data: groupMembershipRows, error: gmErr } = await supabase
     .from("group_memberships")
@@ -56,6 +64,12 @@ export default async function GroupPage({
   const canRename = isWorkspaceAdmin || isGroupManager;
   const canDelete = isWorkspaceAdmin;
 
+  const viewerNote = isWorkspaceAdmin
+    ? `You are ${me.role === "owner" ? "the workspace owner" : "a workspace admin"} — you have full access to every group in this workspace.`
+    : isGroupManager
+      ? "You are a manager of this group."
+      : "You are a member of this group.";
+
   const memberIds = new Set(groupMembers.map((m) => m.user_id));
   const candidatesToAdd = workspaceMembers.filter(
     (m) => !memberIds.has(m.user_id),
@@ -68,15 +82,7 @@ export default async function GroupPage({
         groupId={group.id}
         name={group.name}
         canRename={canRename}
-        viewerLabel={
-          isGroupManager
-            ? "manager"
-            : myGroupMembership
-              ? "member"
-              : isWorkspaceAdmin
-                ? `workspace ${me.role}`
-                : "viewer"
-        }
+        viewerNote={viewerNote}
       />
 
       <section className="flex flex-col gap-3 rounded-lg border border-neutral-200 bg-surface-card p-5">

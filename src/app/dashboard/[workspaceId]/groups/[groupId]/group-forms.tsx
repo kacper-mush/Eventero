@@ -26,13 +26,13 @@ export function GroupHeader({
   groupId,
   name,
   canRename,
-  viewerLabel,
+  viewerNote,
 }: {
   workspaceId: string;
   groupId: string;
   name: string;
   canRename: boolean;
-  viewerLabel: string;
+  viewerNote: string;
 }) {
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -106,7 +106,7 @@ export function GroupHeader({
           </button>
         )}
       </div>
-      <p className="text-xs text-neutral-500">You are a {viewerLabel}.</p>
+      <p className="text-xs text-neutral-500">{viewerNote}</p>
       {justSaved && <p className="text-xs text-green-700">Saved.</p>}
     </header>
   );

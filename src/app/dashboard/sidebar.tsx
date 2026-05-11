@@ -18,12 +18,15 @@ export function Sidebar({
   workspaces,
   groups,
   email,
+  unreadNotificationCount,
 }: {
   workspaces: Workspace[];
   groups: Group[];
   email: string;
+  unreadNotificationCount: number;
 }) {
   const pathname = usePathname();
+  const onNotifications = pathname === "/dashboard/notifications";
   const [newWorkspaceOpen, setNewWorkspaceOpen] = useState(false);
   const [newGroupWorkspaceId, setNewGroupWorkspaceId] = useState<string | null>(
     null,
@@ -53,6 +56,21 @@ export function Sidebar({
           Eventero
         </Link>
       </div>
+
+      <Link
+        href="/dashboard/notifications"
+        aria-current={onNotifications ? "page" : undefined}
+        className={`mx-2 mb-3 flex items-center justify-between rounded px-3 py-2 text-sm font-medium transition ${
+          onNotifications ? "bg-white/20" : "hover:bg-white/10"
+        }`}
+      >
+        <span>Notifications</span>
+        {unreadNotificationCount > 0 && (
+          <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-brand-700">
+            {unreadNotificationCount}
+          </span>
+        )}
+      </Link>
 
       <div className="flex items-center justify-between px-4 pb-2">
         <span className="text-[11px] font-semibold uppercase tracking-wide text-white/70">

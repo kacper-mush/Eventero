@@ -36,6 +36,7 @@ export default async function WorkspaceSettingsPage({
   if (!me) notFound();
 
   const isOwner = me.role === "owner";
+  const canRename = me.role === "owner" || me.role === "admin";
   const otherMembers = members.filter((m) => m.user_id !== userId);
   const canLeave = !isOwner || otherMembers.length === 0;
 
@@ -51,12 +52,14 @@ export default async function WorkspaceSettingsPage({
         </p>
       </header>
 
-      <Section title="Rename">
-        <RenameWorkspaceForm
-          workspaceId={workspace.id}
-          currentName={workspace.name}
-        />
-      </Section>
+      {canRename && (
+        <Section title="Rename">
+          <RenameWorkspaceForm
+            workspaceId={workspace.id}
+            currentName={workspace.name}
+          />
+        </Section>
+      )}
 
       <Section title="Members" description={`${members.length} total`}>
         <ul className="divide-y divide-neutral-200 rounded border border-neutral-200">

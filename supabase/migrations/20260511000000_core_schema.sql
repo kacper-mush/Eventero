@@ -10,63 +10,73 @@
 
 create or replace function public.is_workspace_member(_workspace_id uuid)
 returns boolean
-language sql stable security definer
+language plpgsql stable security definer
 set search_path = public
 as $$
-  select exists (
+begin
+  return exists (
     select 1 from public.workspace_memberships
     where workspace_id = _workspace_id and user_id = auth.uid()
   );
+end;
 $$;
 
 create or replace function public.is_workspace_admin(_workspace_id uuid)
 returns boolean
-language sql stable security definer
+language plpgsql stable security definer
 set search_path = public
 as $$
-  select exists (
+begin
+  return exists (
     select 1 from public.workspace_memberships
     where workspace_id = _workspace_id
       and user_id = auth.uid()
       and role in ('owner', 'admin')
   );
+end;
 $$;
 
 create or replace function public.is_workspace_owner(_workspace_id uuid)
 returns boolean
-language sql stable security definer
+language plpgsql stable security definer
 set search_path = public
 as $$
-  select exists (
+begin
+  return exists (
     select 1 from public.workspace_memberships
     where workspace_id = _workspace_id
       and user_id = auth.uid()
       and role = 'owner'
   );
+end;
 $$;
 
 create or replace function public.is_group_member(_group_id uuid)
 returns boolean
-language sql stable security definer
+language plpgsql stable security definer
 set search_path = public
 as $$
-  select exists (
+begin
+  return exists (
     select 1 from public.group_memberships
     where group_id = _group_id and user_id = auth.uid()
   );
+end;
 $$;
 
 create or replace function public.is_group_manager(_group_id uuid)
 returns boolean
-language sql stable security definer
+language plpgsql stable security definer
 set search_path = public
 as $$
-  select exists (
+begin
+  return exists (
     select 1 from public.group_memberships
     where group_id = _group_id
       and user_id = auth.uid()
       and role = 'manager'
   );
+end;
 $$;
 
 -- =====================================================================

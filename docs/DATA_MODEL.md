@@ -43,6 +43,15 @@ Two scopes, three concepts:
 
 Workspace admins always inherit management rights over groups within their workspace (see RLS policies on `group_memberships`).
 
+### Ownership transfer & leaving
+
+The membership policies forbid creating, updating, or deleting rows where `role = 'owner'`. Two `SECURITY DEFINER` RPCs handle the operations that need to touch the owner row:
+
+- **`transfer_workspace_ownership(_workspace_id, _new_owner_id)`** — caller must be the current owner; target must already be an `admin` or `member` of the workspace. Demotes the caller to `admin` first, then promotes the target to `owner` (the partial unique index allows only one `owner` per workspace, so order matters).
+- **`leave_workspace(_workspace_id)`** — non-owners drop their own membership row. An owner with co-members is refused (must transfer first); a sole owner triggers a `DELETE` of the workspace, which cascades through groups, channels, messages, tasks, memberships, and invitations.
+
+A third helper, **`get_workspace_members(_workspace_id)`**, returns `(user_id, email, role)` for fellow members. `auth.users` is not exposed via PostgREST, so any UI that needs to *name* a user (e.g. the transfer dropdown) goes through this function. The caller must be a member of the workspace.
+
 ## Row-level security
 
 Every public table has RLS enabled and explicit `GRANT`s to the `authenticated` role (new tables in `public` are RLS-protected *and* hidden from the Data API by default).

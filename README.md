@@ -7,6 +7,7 @@ Documentation lives under [`docs/`](docs):
 - [`docs/STACK.md`](docs/STACK.md) — what's in the stack, one-liner *why* per choice.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — how GitHub, Vercel, and Supabase fit together; runtime + deploy flows; failure modes.
 - [`docs/DATA_MODEL.md`](docs/DATA_MODEL.md) — tables, roles, RLS policies, realtime publication.
+- [`docs/DESIGN.md`](docs/DESIGN.md) — colour palette, surface roles, and the Poppins type scale.
 - [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — one-time deployment setup runbook.
 - [`docs/REPO_CONFIG.md`](docs/REPO_CONFIG.md) — branch protection, merge style, secrets, Dependabot.
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — what's left to build, with open design decisions flagged.

@@ -1,5 +1,47 @@
 @import "tailwindcss";
 
+/*
+ * Eventero design tokens. Palette, semantic roles, and the type scale are
+ * documented in docs/DESIGN.md — keep the two in sync.
+ */
+@theme {
+  /* Brand — the olive-green spine of the app */
+  --color-brand-900: #4b5405; /* app top bar, app name, message sender name */
+  --color-brand-800: #5d661d; /* conversation timestamp text */
+  --color-brand-700: #737b3b; /* compose-box text */
+  --color-brand-600: #909c3a; /* left rail (workspaces / groups) */
+  --color-brand-500: #a0b342; /* channel / section header bar */
+  --color-brand-400: #afc03f; /* control accents: + button, send, focus ring */
+  --color-brand-100: #e1e4ca; /* conversation timestamp pill */
+  --color-brand-50: #f3f5e8; /* compose-box background */
+
+  /* Accent — every purple surface */
+  --color-accent: #897399;
+
+  /* Neutral surfaces */
+  --color-surface-card: #f4f4f4; /* expanded cards: tasks / groups / private */
+  --color-surface-muted: #eaeaea; /* calendar-icon backdrop */
+  --color-login-bg: #dbe0e8; /* sign-in screen background */
+  --color-login-fg: #7b7e82; /* sign-in screen text */
+
+  /* Task palettes — each task category uses main / sub(task) / surface */
+  --color-task-green-main: #afc03f;
+  --color-task-green-sub: #ecf0d2;
+  --color-task-green-surface: #fefefb;
+  --color-task-amber-main: #f7ce55;
+  --color-task-amber-sub: #fdf1ce;
+  --color-task-amber-surface: #fffbee;
+  --color-task-coral-main: #ff8e75;
+  --color-task-coral-sub: #ffe5df;
+  --color-task-coral-surface: #fffdfc;
+  --color-task-slate-main: #96a6bd;
+  --color-task-slate-sub: #e6eaef;
+  --color-task-slate-surface: #fdfdfe;
+
+  /* Type — Poppins, loaded in src/app/layout.tsx */
+  --font-sans: var(--font-poppins);
+}
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -8,19 +50,10 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-poppins), Arial, Helvetica, sans-serif;
 }

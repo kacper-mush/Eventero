@@ -10,7 +10,8 @@ The technology choices for the Eventero MVP. Each entry is the choice + a short 
 
 - **Next.js 16 (App Router)** — the de-facto React framework; first-class on Vercel; server components reduce client bundle size.
 - **TypeScript (strict mode)** — catches whole categories of bugs at compile time; types flow from the DB schema all the way into components.
-- **Tailwind CSS** — utility-first styling, fast iteration, no CSS file sprawl.
+- **Tailwind CSS** — utility-first styling, fast iteration, no CSS file sprawl. Design tokens (palette, type scale) live in `globals.css`; see [`DESIGN.md`](DESIGN.md).
+- **Poppins (via `next/font`)** — the product typeface; self-hosted at build time, no layout shift, no extra request.
 - **shadcn/ui** — accessible, unstyled-by-default React components copied into the repo (not a dependency). Clean Slack-like UI in days.
 - **TanStack Query** — handles server-state caching, refetching, and optimistic updates without hand-rolled state management.
 

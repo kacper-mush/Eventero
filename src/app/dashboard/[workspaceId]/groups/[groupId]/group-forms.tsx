@@ -274,15 +274,15 @@ export function AddMemberSection({
   return (
     <form
       action={action}
-      className="flex flex-col gap-2 rounded border border-neutral-200 bg-white p-3 sm:flex-row sm:items-end"
+      className="flex flex-col gap-2 rounded border border-neutral-200 bg-white p-3"
     >
-      <label className="flex flex-1 flex-col gap-1 text-xs">
+      <label className="flex flex-col gap-1 text-xs">
         <span className="font-semibold">Add member</span>
         <select
           name="userId"
           required
           defaultValue=""
-          className="rounded border border-neutral-300 px-2 py-1.5 text-sm outline-none focus:border-brand-500"
+          className="w-full rounded border border-neutral-300 px-2 py-1.5 text-sm outline-none focus:border-brand-500"
         >
           <option value="" disabled>
             Pick a workspace member…
@@ -300,17 +300,19 @@ export function AddMemberSection({
         <select
           name="role"
           defaultValue="member"
-          className="rounded border border-neutral-300 px-2 py-1.5 text-sm outline-none focus:border-brand-500"
+          className="w-full rounded border border-neutral-300 px-2 py-1.5 text-sm outline-none focus:border-brand-500"
         >
           <option value="member">member</option>
           <option value="manager">manager</option>
         </select>
       </label>
 
-      <SubmitButton>Add</SubmitButton>
+      <div className="flex justify-end">
+        <SubmitButton>Add member</SubmitButton>
+      </div>
 
       {state?.error && (
-        <p className="basis-full text-xs text-red-600">{state.error}</p>
+        <p className="text-xs text-red-600">{state.error}</p>
       )}
     </form>
   );

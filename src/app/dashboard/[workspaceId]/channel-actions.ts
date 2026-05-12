@@ -8,6 +8,18 @@ import { createClient } from "@/lib/supabase/server";
 
 import type { ChatMessage } from "./groups/[groupId]/actions";
 
+export type ChannelMention = {
+  id: string;
+  channel_id: string;
+  message_id: number;
+  author_id: string;
+  author_email: string;
+  // The mentioning message's body.
+  body: string;
+  seen_at: string | null;
+  created_at: string;
+};
+
 const messageBodySchema = z
   .string()
   .trim()
@@ -72,7 +84,8 @@ export async function sendChannelMessage(
     return { ok: false, error: insertErr?.message ?? "Send failed" };
   }
 
-  // Fan out @mentions into the workspace inbox. Best-effort.
+  // Fan out @mentions into the channel's drawer mailbox. Best-effort — the
+  // message itself already went through, so we still return it on failure.
   const handles = parseMentions(body.data);
   if (handles.length > 0) {
     const { data: members } = await supabase.rpc("get_workspace_members", {
@@ -82,12 +95,14 @@ export async function sendChannelMessage(
       .filter(
         (m) => m.user_id !== userId && handles.includes(emailToHandle(m.email)),
       )
-      .map((m) => m.user_id);
+      .map((m) => ({
+        channel_id: channelId,
+        message_id: inserted.id,
+        mentioned_user_id: m.user_id,
+        author_id: userId,
+      }));
     if (recipients.length > 0) {
-      await supabase.rpc("notify_channel_mention", {
-        _message_id: inserted.id,
-        _mentioned: recipients,
-      });
+      await supabase.from("channel_mentions").insert(recipients);
     }
   }
 
@@ -153,6 +168,35 @@ export async function deleteChannelMessage(
     .delete()
     .eq("id", messageId)
     .eq("author_id", userId);
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
+export async function markChannelMentionSeen(
+  mentionId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const { supabase } = await requireUser();
+  const id = uuidSchema.safeParse(mentionId);
+  if (!id.success) return { ok: false, error: "Invalid mention" };
+  const { error } = await supabase
+    .from("channel_mentions")
+    .update({ seen_at: new Date().toISOString() })
+    .eq("id", id.data)
+    .is("seen_at", null);
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
+export async function deleteChannelMention(
+  mentionId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const { supabase } = await requireUser();
+  const id = uuidSchema.safeParse(mentionId);
+  if (!id.success) return { ok: false, error: "Invalid mention" };
+  const { error } = await supabase
+    .from("channel_mentions")
+    .delete()
+    .eq("id", id.data);
   if (error) return { ok: false, error: error.message };
   return { ok: true };
 }

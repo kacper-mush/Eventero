@@ -226,7 +226,7 @@ export type WorkspaceInvitation = {
 
 export type Notification = {
   id: string;
-  type: "workspace_invitation" | "channel_mention";
+  type: "workspace_invitation";
   read_at: string | null;
   created_at: string;
   invitation_id: string | null;
@@ -242,10 +242,6 @@ export type Notification = {
   workspace_id: string | null;
   workspace_name: string | null;
   inviter_email: string | null;
-  // Populated for `channel_mention` rows.
-  message_id: number | null;
-  message_body: string | null;
-  mention_author_email: string | null;
 };
 
 const emailSchema = z

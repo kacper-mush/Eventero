@@ -40,7 +40,7 @@ Within a workspace: create groups, send invitations with a predefined role, acce
 
 ## 5. Channels & messaging ✅
 
-Per-group channels (live chat + @mention drawer) shipped in steps under "Live chats inside groups". The per-workspace **global channel** ("general") shipped after: auto-created per workspace, lives at `/dashboard/[workspaceId]` (the workspace landing page; settings moved to `/dashboard/[workspaceId]/settings`), reuses the group chat window (realtime list, optimistic send, author edit/delete), and `@handle` mentions fan out into the workspace **Notifications** inbox as `channel_mention` rows.
+Per-group channels (live chat + @mention drawer) shipped in steps under "Live chats inside groups". The per-workspace **global channel** ("general") shipped after: auto-created per workspace, lives at `/dashboard/[workspaceId]` (the workspace landing page; settings moved to `/dashboard/[workspaceId]/settings`), reuses the group chat window (realtime list, optimistic send, author edit/delete) and the `GroupShell` drawer. `@handle` mentions fan out into a per-channel `channel_mentions` mailbox (in the realtime publication) surfaced in the channel's "Mentions & activity" drawer — exactly mirroring `group_notifications` for group chats. They are *not* in the global Notifications inbox; that surface stays for account-level / cross-workspace events (invitations).
 
 **Decisions made:**
 - **No DMs / cross-group channels.** Two scopes only: one global channel per workspace, one per group.

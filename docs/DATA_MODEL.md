@@ -29,7 +29,9 @@ auth.users ────┬──── workspaces ───── workspace_memb
 | `messages` | `bigint identity` id for cheap chronological ordering. |
 | `tasks` | Per-group. Fields: title, assignee, status (`open`\|`done`), due date. |
 | `invitations` | Email-keyed pending memberships with a role, 7-day expiry, and a `status` lifecycle (`pending` → `accepted` \| `declined` \| `revoked` \| `expired`). |
-| `notifications` | Per-user inbox. `type` discriminates payload; current types: `workspace_invitation`, `channel_mention`. Inserts/deletes are RPC-only; recipients can read and flip `read_at`. |
+| `notifications` | Per-user **account-level** inbox (cross-workspace events). `type` discriminates payload; current types: `workspace_invitation`. Inserts/deletes are RPC-only; recipients can read and flip `read_at`. |
+| `group_notifications` | Per-group "drawer mailbox": `@mention` + task events (`assigned`/`done`) for a recipient in one group. |
+| `channel_mentions` | Per-(global-)channel "drawer mailbox": `@mention`s for a recipient in a workspace's `#general`. Mirrors `group_notifications` minus the task kinds. |
 
 ## Roles
 
@@ -103,21 +105,24 @@ The trigger is `SECURITY DEFINER` so it bypasses the membership INSERT policy.
 
 ## Notifications
 
-A generic per-user inbox. One row per notification; the `type` column discriminates the shape of `payload jsonb`. Current types:
+A generic per-user **account-level** inbox (the `/dashboard/notifications` page). One row per notification; `type` discriminates the shape of `payload jsonb`. Current types:
 
 - `workspace_invitation` — `payload = {"invitation_id": uuid}`. The source of truth for the invitation's current status stays on `invitations`.
-- `channel_mention` — `payload = {"message_id", "channel_id", "workspace_id", "author_id"}`. Created when someone `@handle`-mentions you in a workspace's global ("general") channel. (Mentions in *group* channels go to the group-scoped `group_notifications` table instead, since those have a per-group drawer to surface them in.)
+
+Workspace-internal "you were mentioned" events do **not** live here — they go in the per-group `group_notifications` drawer mailbox or, for `#general`, the `channel_mentions` mailbox (both keyed to a recipient + a chat surface, both in the realtime publication).
 
 RLS:
 - **Read** — `user_id = auth.uid()`.
 - **Update** — same; recipients can only flip `read_at` (no other field is mutated by any code path).
-- **Insert / Delete** — no `GRANT`. Only RPCs touch these: the invitation RPCs, plus `notify_channel_mention(message_id, mentioned[])` (validates the caller authored the message, it lives in a global channel, and each recipient is a workspace member).
+- **Insert / Delete** — no `GRANT`. Only the invitation RPCs touch these.
 
-`get_my_notifications()` is a `SECURITY DEFINER` helper that joins each notification to its underlying object (`invitations`/`workspaces`/`auth.users` for invites; `messages`/`workspaces`/`auth.users` for mentions) so the `/dashboard/notifications` page can render headlines without a chain of client-side joins.
+`channel_mentions` (and `group_notifications`) RLS: recipient reads/updates/deletes their own rows; the message **author** inserts the fan-out rows directly (RLS checks the caller authored the message, the channel is the workspace's `#general`, and each recipient is a workspace member) — no `SECURITY DEFINER` needed.
+
+`get_my_notifications()` is a `SECURITY DEFINER` helper that joins each notification to its underlying object (`invitations` + `workspaces` + `auth.users`) so the page can render headlines without a chain of client-side joins.
 
 ## Realtime
 
-`messages` and `tasks` are members of the `supabase_realtime` publication. Clients subscribe via `postgres_changes` and rely on RLS for filtering — a subscriber only receives events for rows their `SELECT` policy allows.
+`messages`, `tasks`, `group_notifications`, and `channel_mentions` are members of the `supabase_realtime` publication. Clients subscribe via `postgres_changes` and rely on RLS for filtering — a subscriber only receives events for rows their `SELECT` policy allows. (`messages` and `tasks` are set to `replica identity full` so DELETE payloads carry enough to update client state.)
 
 Other tables are intentionally **not** published yet. Membership and channel changes are infrequent and can be refetched on demand; adding them to the publication is a follow-up if a use case justifies the event volume.
 

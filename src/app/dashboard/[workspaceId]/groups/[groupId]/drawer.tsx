@@ -7,11 +7,13 @@ export function GroupShell({
   header,
   main,
   drawer,
+  detailsLabel = "Group details",
 }: {
   groupName: string;
   header: ReactNode;
   main: ReactNode;
   drawer: ReactNode;
+  detailsLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -33,7 +35,7 @@ export function GroupShell({
             aria-controls="group-drawer"
             className="shrink-0 rounded border border-neutral-300 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-700 transition hover:bg-neutral-100"
           >
-            {open ? "Hide details" : "Group details"}
+            {open ? "Hide details" : detailsLabel}
           </button>
         </header>
         <div className="flex-1 min-h-0">{main}</div>

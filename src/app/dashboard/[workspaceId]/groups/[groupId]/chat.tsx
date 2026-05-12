@@ -62,6 +62,7 @@ export function ChatWindow({
   // Subscribe to live message changes on this channel.
   useEffect(() => {
     const supabase = createClient();
+    let removed = false;
     const channel = supabase
       .channel(`messages:${channelId}`)
       .on(
@@ -131,10 +132,15 @@ export function ChatWindow({
       .on(
         "postgres_changes",
         {
+          // No channel_id filter: Realtime can't filter DELETE events on a
+          // non-primary-key column (a delete only reliably carries the PK), so
+          // a filtered DELETE binding is rejected and that error tears down the
+          // whole channel — killing the INSERT/UPDATE bindings too. We instead
+          // receive every messages delete and ignore ids not in this view
+          // (RLS still scopes which deletes reach us at all).
           event: "DELETE",
           schema: "public",
           table: "messages",
-          filter: `channel_id=eq.${channelId}`,
         },
         (payload) => {
           const old = payload.old as { id?: number };
@@ -146,10 +152,19 @@ export function ChatWindow({
             return next;
           });
         },
-      )
-      .subscribe();
+      );
+
+    // Hand the logged-in user's JWT to the realtime socket *before* joining —
+    // otherwise the join races the async session load and goes out as the
+    // `anon` role, which can't SELECT messages, so the server rejects every
+    // filtered binding ("invalid column for filter channel_id") and the whole
+    // channel dies.
+    supabase.realtime.setAuth().then(() => {
+      if (!removed) channel.subscribe();
+    });
 
     return () => {
+      removed = true;
       supabase.removeChannel(channel);
     };
   }, [channelId]);

@@ -62,6 +62,7 @@ export function ChatWindow({
   // Subscribe to live message changes on this channel.
   useEffect(() => {
     const supabase = createClient();
+    let removed = false;
     const channel = supabase
       .channel(`messages:${channelId}`)
       .on(
@@ -151,10 +152,19 @@ export function ChatWindow({
             return next;
           });
         },
-      )
-      .subscribe();
+      );
+
+    // Hand the logged-in user's JWT to the realtime socket *before* joining —
+    // otherwise the join races the async session load and goes out as the
+    // `anon` role, which can't SELECT messages, so the server rejects every
+    // filtered binding ("invalid column for filter channel_id") and the whole
+    // channel dies.
+    supabase.realtime.setAuth().then(() => {
+      if (!removed) channel.subscribe();
+    });
 
     return () => {
+      removed = true;
       supabase.removeChannel(channel);
     };
   }, [channelId]);

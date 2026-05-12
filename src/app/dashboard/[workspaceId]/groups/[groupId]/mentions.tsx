@@ -28,6 +28,7 @@ export function MentionsList({
   // INSERT hits the publication; we filter again client-side to be safe.
   useEffect(() => {
     const supabase = createClient();
+    let removed = false;
     const channel = supabase
       .channel(`group_notifications:${groupId}:${viewerUserId}`)
       .on(
@@ -84,10 +85,15 @@ export function MentionsList({
             return [item, ...prev];
           });
         },
-      )
-      .subscribe();
+      );
+
+    // Authenticate the realtime socket before joining (see chat.tsx).
+    supabase.realtime.setAuth().then(() => {
+      if (!removed) channel.subscribe();
+    });
 
     return () => {
+      removed = true;
       supabase.removeChannel(channel);
     };
   }, [groupId, viewerUserId, authorEmails]);

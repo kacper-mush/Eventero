@@ -84,6 +84,7 @@ export function KanbanBoard({
   // Realtime subscription on tasks for this group.
   useEffect(() => {
     const supabase = createClient();
+    let removed = false;
     const channel = supabase
       .channel(`tasks:${groupId}`)
       // INSERT/UPDATE carry the full new row, so we can filter to this group
@@ -135,9 +136,15 @@ export function KanbanBoard({
             return next;
           });
         },
-      )
-      .subscribe();
+      );
+    // Authenticate the realtime socket before joining (see chat.tsx) — a join
+    // raced ahead of the session load connects as `anon` and every filtered
+    // binding is rejected, killing the channel.
+    supabase.realtime.setAuth().then(() => {
+      if (!removed) channel.subscribe();
+    });
     return () => {
+      removed = true;
       supabase.removeChannel(channel);
     };
   }, [groupId]);

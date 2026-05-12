@@ -3,7 +3,8 @@
 import {
   DndContext,
   DragOverlay,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useDraggable,
   useDroppable,
   useSensor,
@@ -163,7 +164,13 @@ export function KanbanBoard({
   }, [tasks]);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    // Mouse: tiny movement starts the drag. Touch: hold briefly first so a
+    // tap (to open the card) or a finger-scroll through the column isn't
+    // hijacked into a drag.
+    useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 200, tolerance: 8 },
+    }),
   );
 
   const [, startTransition] = useTransition();
@@ -399,11 +406,12 @@ function TaskCard({
           : "border-neutral-200 hover:border-brand-300"
       }`}
     >
-      <div className="flex items-start gap-2">
+      <div className="flex items-start gap-1">
         <button
           type="button"
-          aria-label="Drag"
-          className="mt-0.5 cursor-grab select-none text-neutral-400 active:cursor-grabbing"
+          aria-label="Drag to change status"
+          style={{ touchAction: "none" }}
+          className="-m-1 flex shrink-0 touch-none items-center self-stretch rounded p-2 text-base leading-none text-neutral-400 select-none cursor-grab hover:bg-neutral-100 hover:text-neutral-600 active:cursor-grabbing"
           {...attributes}
           {...listeners}
         >

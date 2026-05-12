@@ -380,10 +380,20 @@ function TaskCard({
         >
           ⋮⋮
         </button>
-        <button
-          type="button"
+        {/* Card body: a role="button" div instead of a <button> so we can use
+            block-level children (p, div) without invalid HTML nesting, which
+            causes hydration mismatches. */}
+        <div
+          role="button"
+          tabIndex={0}
           onClick={onOpen}
-          className="flex-1 text-left"
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onOpen();
+            }
+          }}
+          className="flex-1 cursor-pointer text-left outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
         >
           <p className="font-semibold text-brand-900">{task.title}</p>
           {task.description && (
@@ -397,7 +407,7 @@ function TaskCard({
               {assigneeEmail ?? "Unassigned"}
             </span>
           </div>
-        </button>
+        </div>
       </div>
     </div>
   );

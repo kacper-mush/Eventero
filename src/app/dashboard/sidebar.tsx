@@ -97,16 +97,17 @@ export function Sidebar({
             {workspaces.map((ws) => {
               const isActive = activeWorkspaceId === ws.id;
               const workspaceGroups = groupsByWorkspace.get(ws.id) ?? [];
-              const settingsHref = `/dashboard/${ws.id}`;
-              const onSettings =
-                isActive && !pathname?.includes("/groups/");
+              const onChannel =
+                isActive &&
+                !pathname?.includes("/groups/") &&
+                !pathname?.endsWith("/settings");
+              const onSettings = isActive && pathname?.endsWith("/settings");
               return (
                 <li key={ws.id}>
                   <Link
-                    href={settingsHref}
-                    aria-current={onSettings ? "page" : undefined}
+                    href={`/dashboard/${ws.id}`}
                     className={`block truncate rounded px-3 py-2 text-sm font-medium transition ${
-                      onSettings ? "bg-white/20" : "hover:bg-white/10"
+                      isActive ? "bg-white/15" : "hover:bg-white/10"
                     }`}
                   >
                     {ws.name}
@@ -114,7 +115,29 @@ export function Sidebar({
 
                   {isActive && (
                     <div className="mt-1 mb-2 ml-2 border-l border-white/15 pl-2">
-                      <div className="flex items-center justify-between px-1 py-1">
+                      <Link
+                        href={`/dashboard/${ws.id}`}
+                        aria-current={onChannel ? "page" : undefined}
+                        className={`block truncate rounded px-2 py-1 text-xs transition ${
+                          onChannel
+                            ? "bg-white/20 font-semibold"
+                            : "hover:bg-white/10"
+                        }`}
+                      >
+                        # general
+                      </Link>
+                      <Link
+                        href={`/dashboard/${ws.id}/settings`}
+                        aria-current={onSettings ? "page" : undefined}
+                        className={`block truncate rounded px-2 py-1 text-xs transition ${
+                          onSettings
+                            ? "bg-white/20 font-semibold"
+                            : "hover:bg-white/10"
+                        }`}
+                      >
+                        Settings
+                      </Link>
+                      <div className="flex items-center justify-between px-1 pt-2 pb-1">
                         <span className="text-[10px] font-semibold uppercase tracking-wide text-white/60">
                           Groups
                         </span>

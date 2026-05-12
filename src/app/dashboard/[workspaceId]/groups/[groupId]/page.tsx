@@ -14,7 +14,13 @@ import {
   MembersList,
 } from "./group-forms";
 import { MentionsList } from "./mentions";
-import type { ChatMessage, GroupMention } from "./actions";
+import {
+  deleteMessage,
+  editMessage,
+  sendMessage,
+  type ChatMessage,
+  type GroupMention,
+} from "./actions";
 import { KanbanBoard } from "./tasks/kanban";
 import type { TaskRow } from "./tasks/actions";
 import { ViewTabs } from "./view-tabs";
@@ -202,13 +208,16 @@ export default async function GroupPage({
   const chatPane =
     channel && canSeeChat ? (
       <ChatWindow
-        workspaceId={workspaceId}
-        groupId={group.id}
         channelId={channel.id}
         initialMessages={initialMessages}
         viewerUserId={userId}
         viewerEmail={userEmail}
         memberEmails={memberEmailRecord}
+        actions={{
+          send: sendMessage.bind(null, workspaceId, group.id),
+          edit: editMessage.bind(null, workspaceId, group.id),
+          remove: deleteMessage.bind(null, workspaceId, group.id),
+        }}
       />
     ) : (
       <div className="flex h-full items-center justify-center p-8 text-sm text-neutral-500">

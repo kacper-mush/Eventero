@@ -12,12 +12,7 @@ import {
 
 import { createClient } from "@/lib/supabase/client";
 
-import {
-  deleteMessage as deleteMessageAction,
-  editMessage as editMessageAction,
-  sendMessage as sendMessageAction,
-  type ChatMessage,
-} from "./actions";
+import type { ChatMessage } from "./actions";
 
 type PendingMessage = {
   tempId: string;
@@ -25,22 +20,38 @@ type PendingMessage = {
   created_at: string;
 };
 
+export type SendMessageResult =
+  | { ok: true; message: ChatMessage }
+  | { ok: false; error: string };
+
+export type EditMessageResult =
+  | { ok: true; message: ChatMessage }
+  | { ok: false; error: string };
+
+export type DeleteMessageResult = { ok: boolean; error?: string };
+
+export type ChatActions = {
+  send: (body: string) => Promise<SendMessageResult>;
+  edit: (messageId: number, body: string) => Promise<EditMessageResult>;
+  remove: (messageId: number) => Promise<DeleteMessageResult>;
+};
+
 export function ChatWindow({
-  workspaceId,
-  groupId,
   channelId,
   initialMessages,
   viewerUserId,
   viewerEmail,
   memberEmails,
+  actions,
+  placeholder = "Message — use @handle to mention someone",
 }: {
-  workspaceId: string;
-  groupId: string;
   channelId: string;
   initialMessages: ChatMessage[];
   viewerUserId: string;
   viewerEmail: string;
   memberEmails: Record<string, string>;
+  actions: ChatActions;
+  placeholder?: string;
 }) {
   // Keyed by id — drops realtime echoes for messages we already have.
   const [messages, setMessages] = useState<Map<number, ChatMessage>>(
@@ -199,7 +210,7 @@ export function ChatWindow({
       setErrorMsg(null);
 
       startSending(async () => {
-        const res = await sendMessageAction(workspaceId, groupId, trimmed);
+        const res = await actions.send(trimmed);
         setPending((p) => p.filter((m) => m.tempId !== tempId));
         if (!res.ok) {
           setErrorMsg(res.error);
@@ -216,7 +227,7 @@ export function ChatWindow({
         });
       });
     },
-    [input, isSending, workspaceId, groupId],
+    [input, isSending, actions],
   );
 
   return (
@@ -236,8 +247,7 @@ export function ChatWindow({
                 key={m.id}
                 message={m}
                 isAuthor={m.author_id === viewerUserId}
-                workspaceId={workspaceId}
-                groupId={groupId}
+                actions={actions}
               />
             ))}
             {pending.map((p) => (
@@ -272,7 +282,7 @@ export function ChatWindow({
           }}
           rows={1}
           maxLength={4000}
-          placeholder="Message — use @handle to mention someone"
+          placeholder={placeholder}
           className="flex-1 resize-none rounded border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500"
         />
         <button
@@ -293,13 +303,11 @@ export function ChatWindow({
 function MessageRow({
   message,
   isAuthor,
-  workspaceId,
-  groupId,
+  actions,
 }: {
   message: ChatMessage;
   isAuthor: boolean;
-  workspaceId: string;
-  groupId: string;
+  actions: ChatActions;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(message.body);
@@ -314,12 +322,7 @@ function MessageRow({
       return;
     }
     startTransition(async () => {
-      const res = await editMessageAction(
-        workspaceId,
-        groupId,
-        message.id,
-        trimmed,
-      );
+      const res = await actions.edit(message.id, trimmed);
       if (!res.ok) {
         setError(res.error);
         return;
@@ -332,7 +335,7 @@ function MessageRow({
   function onDelete() {
     if (!window.confirm("Delete this message?")) return;
     startTransition(async () => {
-      const res = await deleteMessageAction(workspaceId, groupId, message.id);
+      const res = await actions.remove(message.id);
       if (!res.ok) setError(res.error ?? "Delete failed");
     });
   }

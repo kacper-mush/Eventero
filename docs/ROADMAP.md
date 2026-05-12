@@ -38,13 +38,17 @@ Within a workspace: create groups, send invitations with a predefined role, acce
 - Group-scoped invitations. The `invitations` table already supports `group_id` + `group_role`; only the workspace path has a UI today.
 - Editing the role on a pending invite (current rule: revoke and resend).
 
-## 5. Channels & messaging
+## 5. Channels & messaging ✅
 
-Per-workspace global channel + per-group channels. Message list with realtime updates, send box, basic formatting.
+Per-group channels (live chat + @mention drawer) shipped in steps under "Live chats inside groups". The per-workspace **global channel** ("general") shipped after: auto-created per workspace, lives at `/dashboard/[workspaceId]` (the workspace landing page; settings moved to `/dashboard/[workspaceId]/settings`), reuses the group chat window (realtime list, optimistic send, author edit/delete), and `@handle` mentions fan out into the workspace **Notifications** inbox as `channel_mention` rows.
 
-**🔍 Decisions needed:**
-- Channel scope — per-group only, or also DMs / cross-group?
-- Message features — threads, reactions, edit, delete? (MVP-likely answer: none.)
+**Decisions made:**
+- **No DMs / cross-group channels.** Two scopes only: one global channel per workspace, one per group.
+- **Message features:** edit + delete (author only) — already present from the group chat. No threads or reactions.
+
+**Deferred follow-ups inside this slice:**
+- Basic formatting / markdown rendering in message bodies.
+- Pagination beyond the most-recent 50 messages.
 
 ## 6. Task boards
 

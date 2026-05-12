@@ -25,11 +25,11 @@ auth.users ────┬──── workspaces ───── workspace_memb
 | `workspace_memberships` | Composite key `(workspace_id, user_id)`. Role is `owner` \| `admin` \| `member`. |
 | `groups` | Sub-units inside a workspace (e.g. "Catering", "Stage Crew"). |
 | `group_memberships` | Composite key `(group_id, user_id)`. Role is `manager` \| `member`. |
-| `channels` | Chat surfaces. `group_id is null` → workspace-wide; otherwise group-scoped. |
+| `channels` | Chat surfaces. `group_id is null` → workspace-wide ("general"); otherwise group-scoped. Auto-created by trigger — one global channel per workspace, one per group — with a partial unique index enforcing each invariant. |
 | `messages` | `bigint identity` id for cheap chronological ordering. |
 | `tasks` | Per-group. Fields: title, assignee, status (`open`\|`done`), due date. |
 | `invitations` | Email-keyed pending memberships with a role, 7-day expiry, and a `status` lifecycle (`pending` → `accepted` \| `declined` \| `revoked` \| `expired`). |
-| `notifications` | Per-user inbox. `type` discriminates payload; current types: `workspace_invitation`. Inserts/deletes are RPC-only; recipients can read and flip `read_at`. |
+| `notifications` | Per-user inbox. `type` discriminates payload; current types: `workspace_invitation`, `channel_mention`. Inserts/deletes are RPC-only; recipients can read and flip `read_at`. |
 
 ## Roles
 
@@ -106,13 +106,14 @@ The trigger is `SECURITY DEFINER` so it bypasses the membership INSERT policy.
 A generic per-user inbox. One row per notification; the `type` column discriminates the shape of `payload jsonb`. Current types:
 
 - `workspace_invitation` — `payload = {"invitation_id": uuid}`. The source of truth for the invitation's current status stays on `invitations`.
+- `channel_mention` — `payload = {"message_id", "channel_id", "workspace_id", "author_id"}`. Created when someone `@handle`-mentions you in a workspace's global ("general") channel. (Mentions in *group* channels go to the group-scoped `group_notifications` table instead, since those have a per-group drawer to surface them in.)
 
 RLS:
 - **Read** — `user_id = auth.uid()`.
 - **Update** — same; recipients can only flip `read_at` (no other field is mutated by any code path).
-- **Insert / Delete** — no `GRANT`. Only the invitation RPCs touch these.
+- **Insert / Delete** — no `GRANT`. Only RPCs touch these: the invitation RPCs, plus `notify_channel_mention(message_id, mentioned[])` (validates the caller authored the message, it lives in a global channel, and each recipient is a workspace member).
 
-`get_my_notifications()` is a `SECURITY DEFINER` helper that joins each notification to its underlying object (currently `invitations` + `workspaces` + `auth.users`) so the `/dashboard/notifications` page can render headlines without a chain of client-side joins.
+`get_my_notifications()` is a `SECURITY DEFINER` helper that joins each notification to its underlying object (`invitations`/`workspaces`/`auth.users` for invites; `messages`/`workspaces`/`auth.users` for mentions) so the `/dashboard/notifications` page can render headlines without a chain of client-side joins.
 
 ## Realtime
 

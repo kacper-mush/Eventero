@@ -1,19 +1,19 @@
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import { emailToHandle } from "@/lib/mentions";
 import { createClient } from "@/lib/supabase/server";
 
+import { getWorkspaceMembers } from "../actions";
 import {
-  getWorkspaceMembers,
-  getWorkspacePendingInvitations,
-} from "../actions";
-import {
-  DeleteWorkspaceSection,
-  InviteMembersSection,
-  RenameWorkspaceForm,
-  TransferOwnershipSection,
-} from "./settings-forms";
+  deleteChannelMessage,
+  editChannelMessage,
+  sendChannelMessage,
+} from "./channel-actions";
+import { ChatWindow } from "./groups/[groupId]/chat";
+import type { ChatMessage } from "./groups/[groupId]/actions";
 
-export default async function WorkspaceSettingsPage({
+export default async function WorkspaceChannelPage({
   params,
 }: {
   params: Promise<{ workspaceId: string }>;
@@ -23,6 +23,10 @@ export default async function WorkspaceSettingsPage({
   const supabase = await createClient();
   const { data: claimsData } = await supabase.auth.getClaims();
   const userId = claimsData?.claims?.sub;
+  const userEmail =
+    typeof claimsData?.claims?.email === "string"
+      ? claimsData.claims.email
+      : "";
   if (!userId) redirect("/login");
 
   const { data: workspace, error } = await supabase
@@ -30,7 +34,6 @@ export default async function WorkspaceSettingsPage({
     .select("id, name")
     .eq("id", workspaceId)
     .maybeSingle();
-
   if (error) throw new Error(error.message);
   if (!workspace) notFound();
 
@@ -38,110 +41,88 @@ export default async function WorkspaceSettingsPage({
   const me = members.find((m) => m.user_id === userId);
   if (!me) notFound();
 
-  const isOwner = me.role === "owner";
-  const isAdmin = me.role === "owner" || me.role === "admin";
-  const canRename = isAdmin;
-  const otherMembers = members.filter((m) => m.user_id !== userId);
-
-  const pendingInvitations = isAdmin
-    ? await getWorkspacePendingInvitations(workspaceId)
-    : [];
-
-  return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-8 p-8">
-      <header className="flex flex-col gap-1">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
-          Workspace settings
-        </p>
-        <h1 className="text-2xl font-bold text-brand-900">{workspace.name}</h1>
-        <p className="text-xs text-neutral-500">
-          You are {me.role === "owner" ? "the owner" : `an ${me.role}`}.
-        </p>
-      </header>
-
-      {canRename && (
-        <Section title="Rename">
-          <RenameWorkspaceForm
-            workspaceId={workspace.id}
-            currentName={workspace.name}
-          />
-        </Section>
-      )}
-
-      {isAdmin && (
-        <Section
-          title="Invite members"
-          description="Invite someone with an existing Eventero account. They get an in-app notification to accept; invitations expire after 7 days."
-        >
-          <InviteMembersSection
-            workspaceId={workspace.id}
-            pendingInvitations={pendingInvitations}
-          />
-        </Section>
-      )}
-
-      <Section title="Members" description={`${members.length} total`}>
-        <ul className="divide-y divide-neutral-200 rounded border border-neutral-200">
-          {members.map((m) => (
-            <li
-              key={m.user_id}
-              className="flex items-center justify-between px-3 py-2 text-sm"
-            >
-              <span className="truncate">{m.email}</span>
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
-                {m.role}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </Section>
-
-      {isOwner && (
-        <Section
-          title="Transfer ownership"
-          description="Hand the workspace over to another member. You will become an admin."
-        >
-          <TransferOwnershipSection
-            workspaceId={workspace.id}
-            workspaceName={workspace.name}
-            candidates={otherMembers}
-          />
-        </Section>
-      )}
-
-      {isOwner && (
-        <Section
-          title="Delete workspace"
-          description="Permanently deletes the workspace and everything inside it. This cannot be undone."
-        >
-          <DeleteWorkspaceSection
-            workspaceId={workspace.id}
-            workspaceName={workspace.name}
-          />
-        </Section>
-      )}
-    </div>
+  const memberEmailRecord: Record<string, string> = Object.fromEntries(
+    members.map((m) => [m.user_id, m.email]),
   );
-}
 
-function Section({
-  title,
-  description,
-  children,
-}: {
-  title: string;
-  description?: string;
-  children: React.ReactNode;
-}) {
+  const { data: channel, error: channelErr } = await supabase
+    .from("channels")
+    .select("id")
+    .eq("workspace_id", workspace.id)
+    .is("group_id", null)
+    .maybeSingle();
+  if (channelErr) throw new Error(channelErr.message);
+
+  let initialMessages: ChatMessage[] = [];
+  if (channel) {
+    const { data: rows, error: msgErr } = await supabase
+      .from("messages")
+      .select("id, channel_id, author_id, body, created_at, edited_at")
+      .eq("channel_id", channel.id)
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(50);
+    if (msgErr) throw new Error(msgErr.message);
+    initialMessages = ((rows ?? []) as Array<{
+      id: number;
+      channel_id: string;
+      author_id: string;
+      body: string;
+      created_at: string;
+      edited_at: string | null;
+    }>)
+      .map((m) => ({
+        id: m.id,
+        channel_id: m.channel_id,
+        author_id: m.author_id,
+        author_email: memberEmailRecord[m.author_id] ?? "(unknown)",
+        body: m.body,
+        created_at: m.created_at,
+        edited_at: m.edited_at,
+      }))
+      .reverse();
+  }
+
   return (
-    <section className="flex flex-col gap-3 rounded-lg border border-neutral-200 bg-surface-card p-5">
-      <div className="flex flex-col gap-0.5">
-        <h2 className="text-base font-bold">{title}</h2>
-        {description && (
-          <p className="text-xs text-neutral-500">{description}</p>
+    <div className="flex h-full min-h-0 flex-col">
+      <header className="flex items-center justify-between gap-3 border-b border-neutral-200 bg-surface-card px-6 py-3">
+        <div className="flex min-w-0 items-baseline gap-2">
+          <span className="text-xl font-bold text-brand-900">#</span>
+          <h1 className="truncate text-lg font-bold text-brand-900">general</h1>
+          <span className="hidden truncate text-xs text-neutral-500 sm:inline">
+            {workspace.name} — everyone in the workspace
+          </span>
+        </div>
+        <span className="hidden text-[11px] text-neutral-500 md:inline">
+          Tip — your handle is @{emailToHandle(userEmail)}
+        </span>
+        <Link
+          href={`/dashboard/${workspace.id}/settings`}
+          className="shrink-0 rounded border border-neutral-300 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-700 transition hover:bg-neutral-100"
+        >
+          Workspace settings
+        </Link>
+      </header>
+      <div className="flex-1 min-h-0">
+        {channel ? (
+          <ChatWindow
+            channelId={channel.id}
+            initialMessages={initialMessages}
+            viewerUserId={userId}
+            viewerEmail={userEmail}
+            memberEmails={memberEmailRecord}
+            actions={{
+              send: sendChannelMessage.bind(null, workspace.id),
+              edit: editChannelMessage.bind(null, workspace.id),
+              remove: deleteChannelMessage.bind(null, workspace.id),
+            }}
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center p-8 text-sm text-neutral-500">
+            The general channel isn&apos;t available yet.
+          </div>
         )}
       </div>
-      {children}
-    </section>
+    </div>
   );
 }

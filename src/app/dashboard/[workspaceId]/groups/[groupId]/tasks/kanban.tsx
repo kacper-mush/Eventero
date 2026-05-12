@@ -86,30 +86,52 @@ export function KanbanBoard({
     const supabase = createClient();
     const channel = supabase
       .channel(`tasks:${groupId}`)
+      // INSERT/UPDATE carry the full new row, so we can filter to this group
+      // server-side.
       .on(
         "postgres_changes",
         {
-          event: "*",
+          event: "INSERT",
           schema: "public",
           table: "tasks",
           filter: `group_id=eq.${groupId}`,
         },
         (payload) => {
-          if (payload.eventType === "DELETE") {
-            const old = payload.old as { id?: string };
-            if (!old.id) return;
-            setTasks((prev) => {
-              if (!prev.has(old.id!)) return prev;
-              const next = new Map(prev);
-              next.delete(old.id!);
-              return next;
-            });
-            return;
-          }
           const row = payload.new as TaskRow;
+          setTasks((prev) => new Map(prev).set(row.id, row));
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "tasks",
+          filter: `group_id=eq.${groupId}`,
+        },
+        (payload) => {
+          const row = payload.new as TaskRow;
+          setTasks((prev) => new Map(prev).set(row.id, row));
+        },
+      )
+      // No group_id filter on DELETE: Realtime can't filter delete events on a
+      // non-primary-key column, and a filtered DELETE binding is rejected,
+      // which tears down the whole channel. Receive every tasks delete and
+      // ignore ids not in this board (RLS still scopes which reach us).
+      .on(
+        "postgres_changes",
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "tasks",
+        },
+        (payload) => {
+          const old = payload.old as { id?: string };
+          if (!old.id) return;
           setTasks((prev) => {
+            if (!prev.has(old.id!)) return prev;
             const next = new Map(prev);
-            next.set(row.id, row);
+            next.delete(old.id!);
             return next;
           });
         },

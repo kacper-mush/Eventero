@@ -131,10 +131,15 @@ export function ChatWindow({
       .on(
         "postgres_changes",
         {
+          // No channel_id filter: Realtime can't filter DELETE events on a
+          // non-primary-key column (a delete only reliably carries the PK), so
+          // a filtered DELETE binding is rejected and that error tears down the
+          // whole channel — killing the INSERT/UPDATE bindings too. We instead
+          // receive every messages delete and ignore ids not in this view
+          // (RLS still scopes which deletes reach us at all).
           event: "DELETE",
           schema: "public",
           table: "messages",
-          filter: `channel_id=eq.${channelId}`,
         },
         (payload) => {
           const old = payload.old as { id?: number };

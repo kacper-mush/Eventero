@@ -12,7 +12,7 @@ export default async function DashboardLayout({
   const data = await getSidebarData();
 
   return (
-    <div className="flex h-dvh w-full overflow-hidden">
+    <div className="flex h-dvh w-full flex-col overflow-hidden md:flex-row">
       <Sidebar
         workspaces={data.workspaces}
         groups={data.groups}

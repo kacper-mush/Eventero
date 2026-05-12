@@ -21,10 +21,13 @@ export type ChatMessage = {
 
 export type GroupMention = {
   id: string;
-  message_id: number;
+  kind: "mention" | "task_assigned" | "task_done";
+  message_id: number | null;
+  task_id: string | null;
   group_id: string;
   author_id: string;
   author_email: string;
+  // For mentions: the message body. For task events: the task title.
   body: string;
   seen_at: string | null;
   created_at: string;
@@ -214,7 +217,11 @@ export async function sendMessage(
         author_id: userId,
       }));
     if (recipients.length > 0) {
-      await supabase.from("group_mentions").insert(recipients);
+      await supabase
+        .from("group_notifications")
+        .insert(
+          recipients.map((r) => ({ ...r, kind: "mention" as const })),
+        );
     }
   }
 
@@ -324,7 +331,7 @@ export async function markMentionSeen(
   const id = uuidSchema.safeParse(mentionId);
   if (!id.success) return { ok: false, error: "Invalid mention" };
   const { error } = await supabase
-    .from("group_mentions")
+    .from("group_notifications")
     .update({ seen_at: new Date().toISOString() })
     .eq("id", id.data)
     .is("seen_at", null);
@@ -339,7 +346,7 @@ export async function deleteMention(
   const id = uuidSchema.safeParse(mentionId);
   if (!id.success) return { ok: false, error: "Invalid mention" };
   const { error } = await supabase
-    .from("group_mentions")
+    .from("group_notifications")
     .delete()
     .eq("id", id.data);
   if (error) return { ok: false, error: error.message };

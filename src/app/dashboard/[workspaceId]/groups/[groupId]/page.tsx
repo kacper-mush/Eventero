@@ -15,13 +15,20 @@ import {
 } from "./group-forms";
 import { MentionsList } from "./mentions";
 import type { ChatMessage, GroupMention } from "./actions";
+import { KanbanBoard } from "./tasks/kanban";
+import type { TaskRow } from "./tasks/actions";
+import { ViewTabs } from "./view-tabs";
 
 export default async function GroupPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ workspaceId: string; groupId: string }>;
+  searchParams: Promise<{ view?: string }>;
 }) {
   const { workspaceId, groupId } = await params;
+  const { view } = await searchParams;
+  const activeView: "chat" | "tasks" = view === "tasks" ? "tasks" : "chat";
 
   const supabase = await createClient();
   const { data: claimsData } = await supabase.auth.getClaims();
@@ -109,9 +116,9 @@ export default async function GroupPage({
         .order("id", { ascending: false })
         .limit(50),
       supabase
-        .from("group_mentions")
+        .from("group_notifications")
         .select(
-          "id, message_id, group_id, author_id, seen_at, created_at, messages(body)",
+          "id, kind, message_id, task_id, group_id, author_id, seen_at, created_at, messages(body), tasks(title)",
         )
         .eq("group_id", group.id)
         .eq("mentioned_user_id", userId)
@@ -143,21 +150,31 @@ export default async function GroupPage({
 
     initialMentions = ((mentionsRes.data ?? []) as Array<{
       id: string;
-      message_id: number;
+      kind: "mention" | "task_assigned" | "task_done";
+      message_id: number | null;
+      task_id: string | null;
       group_id: string;
       author_id: string;
       seen_at: string | null;
       created_at: string;
       messages: { body: string } | { body: string }[] | null;
+      tasks: { title: string } | { title: string }[] | null;
     }>).map((m) => {
       const msg = Array.isArray(m.messages) ? m.messages[0] : m.messages;
+      const tsk = Array.isArray(m.tasks) ? m.tasks[0] : m.tasks;
+      const body =
+        m.kind === "mention"
+          ? msg?.body ?? "(message unavailable)"
+          : tsk?.title ?? "(task unavailable)";
       return {
         id: m.id,
+        kind: m.kind,
         message_id: m.message_id,
+        task_id: m.task_id,
         group_id: m.group_id,
         author_id: m.author_id,
         author_email: memberEmailRecord[m.author_id] ?? "(unknown)",
-        body: msg?.body ?? "(message unavailable)",
+        body,
         seen_at: m.seen_at,
         created_at: m.created_at,
       };
@@ -167,7 +184,23 @@ export default async function GroupPage({
   // A small hint surfaced in the chat area when the user can't post yet.
   const handleHint = `Tip — your handle is @${emailToHandle(userEmail)}`;
 
-  const main =
+  const canSeeBoard = isGroupMember || isWorkspaceAdmin;
+  const canCreateTasks = isGroupManager || isWorkspaceAdmin;
+
+  let initialTasks: TaskRow[] = [];
+  if (activeView === "tasks" && canSeeBoard) {
+    const { data: taskRows, error: tasksErr } = await supabase
+      .from("tasks")
+      .select(
+        "id, group_id, title, description, status, assignee_id, reporter_id, created_at",
+      )
+      .eq("group_id", group.id)
+      .order("created_at", { ascending: true });
+    if (tasksErr) throw new Error(tasksErr.message);
+    initialTasks = (taskRows ?? []) as TaskRow[];
+  }
+
+  const chatPane =
     channel && canSeeChat ? (
       <ChatWindow
         workspaceId={workspaceId}
@@ -186,6 +219,32 @@ export default async function GroupPage({
       </div>
     );
 
+  const tasksPane = canSeeBoard ? (
+    <KanbanBoard
+      groupId={group.id}
+      viewerUserId={userId}
+      canCreate={canCreateTasks}
+      isGroupManager={isGroupManager}
+      isWorkspaceAdmin={isWorkspaceAdmin}
+      initialTasks={initialTasks}
+      workspaceMembers={workspaceMembers.map((m) => ({
+        user_id: m.user_id,
+        email: m.email,
+      }))}
+      groupMembers={groupMembers.map((m) => ({
+        user_id: m.user_id,
+        email: m.email,
+        role: m.role,
+      }))}
+    />
+  ) : (
+    <div className="flex h-full items-center justify-center p-8 text-sm text-neutral-500">
+      Join this group to see tasks.
+    </div>
+  );
+
+  const main = activeView === "tasks" ? tasksPane : chatPane;
+
   const unreadMentionCount = initialMentions.filter(
     (m) => m.seen_at === null,
   ).length;
@@ -203,7 +262,7 @@ export default async function GroupPage({
       {canSeeChat && (
         <DrawerSection
           title="Mentions & activity"
-          subtitle="Last 5 @mentions for you in this group."
+          subtitle="Last 5 mentions and task updates for you in this group."
           badge={unreadMentionCount > 0 ? String(unreadMentionCount) : null}
           defaultOpen
         >
@@ -260,9 +319,12 @@ export default async function GroupPage({
       <GroupShell
         groupName={group.name}
         header={
-          <span className="hidden text-[11px] text-neutral-500 sm:inline">
-            {handleHint}
-          </span>
+          <div className="flex items-center gap-3">
+            <ViewTabs current={activeView} />
+            <span className="hidden text-[11px] text-neutral-500 sm:inline">
+              {handleHint}
+            </span>
+          </div>
         }
         main={main}
         drawer={drawer}

@@ -29,19 +29,21 @@ export function MentionsList({
   useEffect(() => {
     const supabase = createClient();
     const channel = supabase
-      .channel(`group_mentions:${groupId}:${viewerUserId}`)
+      .channel(`group_notifications:${groupId}:${viewerUserId}`)
       .on(
         "postgres_changes",
         {
           event: "INSERT",
           schema: "public",
-          table: "group_mentions",
+          table: "group_notifications",
           filter: `group_id=eq.${groupId}`,
         },
         async (payload) => {
           const row = payload.new as {
             id: string;
-            message_id: number;
+            kind: "mention" | "task_assigned" | "task_done";
+            message_id: number | null;
+            task_id: string | null;
             group_id: string;
             author_id: string;
             mentioned_user_id: string;
@@ -49,19 +51,31 @@ export function MentionsList({
             created_at: string;
           };
           if (row.mentioned_user_id !== viewerUserId) return;
-          // Fetch the message body to render the preview.
-          const { data: msg } = await supabase
-            .from("messages")
-            .select("body")
-            .eq("id", row.message_id)
-            .maybeSingle();
+          let body = "(unavailable)";
+          if (row.kind === "mention" && row.message_id !== null) {
+            const { data: msg } = await supabase
+              .from("messages")
+              .select("body")
+              .eq("id", row.message_id)
+              .maybeSingle();
+            body = msg?.body ?? "(message unavailable)";
+          } else if (row.task_id) {
+            const { data: tsk } = await supabase
+              .from("tasks")
+              .select("title")
+              .eq("id", row.task_id)
+              .maybeSingle();
+            body = tsk?.title ?? "(task unavailable)";
+          }
           const item: GroupMention = {
             id: row.id,
+            kind: row.kind,
             message_id: row.message_id,
+            task_id: row.task_id,
             group_id: row.group_id,
             author_id: row.author_id,
             author_email: authorEmails[row.author_id] ?? "(unknown)",
-            body: msg?.body ?? "(message unavailable)",
+            body,
             seen_at: row.seen_at,
             created_at: row.created_at,
           };
@@ -128,7 +142,16 @@ function MentionRow({
           : "border-neutral-200 bg-surface-card"
       }`}
     >
-      <p className="font-semibold text-brand-900">{mention.author_email}</p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="font-semibold text-brand-900">{mention.author_email}</p>
+        <span className="rounded-full bg-neutral-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-neutral-600">
+          {mention.kind === "mention"
+            ? "Mention"
+            : mention.kind === "task_assigned"
+              ? "Assigned"
+              : "Done"}
+        </span>
+      </div>
       <p className="line-clamp-3 whitespace-pre-wrap break-words text-neutral-700">
         {mention.body}
       </p>

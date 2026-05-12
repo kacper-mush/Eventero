@@ -122,8 +122,7 @@ export default async function GroupPage({
         )
         .eq("group_id", group.id)
         .eq("mentioned_user_id", userId)
-        .order("created_at", { ascending: false })
-        .limit(5),
+        .order("created_at", { ascending: false }),
     ]);
     if (msgsRes.error) throw new Error(msgsRes.error.message);
     if (mentionsRes.error) throw new Error(mentionsRes.error.message);
@@ -262,7 +261,7 @@ export default async function GroupPage({
       {canSeeChat && (
         <DrawerSection
           title="Mentions & activity"
-          subtitle="Last 5 mentions and task updates for you in this group."
+          subtitle="Mentions and task updates for you in this group."
           badge={unreadMentionCount > 0 ? String(unreadMentionCount) : null}
           defaultOpen
         >

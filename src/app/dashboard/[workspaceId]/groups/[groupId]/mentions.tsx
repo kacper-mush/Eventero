@@ -81,7 +81,7 @@ export function MentionsList({
           };
           setItems((prev) => {
             if (prev.some((m) => m.id === item.id)) return prev;
-            return [item, ...prev].slice(0, 5);
+            return [item, ...prev];
           });
         },
       )
@@ -152,9 +152,7 @@ function MentionRow({
               : "Done"}
         </span>
       </div>
-      <p className="line-clamp-3 whitespace-pre-wrap break-words text-neutral-700">
-        {mention.body}
-      </p>
+      <NotificationContent mention={mention} />
       <p className="text-[10px] text-neutral-500" suppressHydrationWarning>
         {new Date(mention.created_at).toLocaleString()}
       </p>
@@ -189,5 +187,30 @@ function MentionRow({
         </button>
       </div>
     </li>
+  );
+}
+
+function NotificationContent({ mention }: { mention: GroupMention }) {
+  if (mention.kind === "task_assigned") {
+    return (
+      <p className="line-clamp-3 whitespace-pre-wrap break-words text-neutral-700">
+        Task <span className="font-semibold">{mention.body}</span> was assigned
+        to you.
+      </p>
+    );
+  }
+  if (mention.kind === "task_done") {
+    return (
+      <p className="line-clamp-3 whitespace-pre-wrap break-words text-neutral-700">
+        Task <span className="font-semibold">{mention.body}</span> you are
+        managing is marked as done.
+      </p>
+    );
+  }
+  // mention: render the message body preview verbatim.
+  return (
+    <p className="line-clamp-3 whitespace-pre-wrap break-words text-neutral-700">
+      {mention.body}
+    </p>
   );
 }

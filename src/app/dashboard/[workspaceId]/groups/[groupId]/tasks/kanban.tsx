@@ -2,12 +2,14 @@
 
 import {
   DndContext,
+  DragOverlay,
   PointerSensor,
   useDraggable,
   useDroppable,
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragStartEvent,
 } from "@dnd-kit/core";
 import {
   useCallback,
@@ -24,6 +26,7 @@ import { createClient } from "@/lib/supabase/client";
 import {
   assignTask as assignTaskAction,
   createTask as createTaskAction,
+  deleteTask as deleteTaskAction,
   moveTaskStatus as moveTaskStatusAction,
   setTaskReporter as setTaskReporterAction,
   updateTask as updateTaskAction,
@@ -32,6 +35,7 @@ import {
 } from "./actions";
 import {
   canChangeReporter as canChangeReporterFn,
+  canDeleteTask as canDeleteTaskFn,
   canEditMeta as canEditMetaFn,
   canSetAssignee as canSetAssigneeFn,
 } from "./permissions";
@@ -69,6 +73,7 @@ export function KanbanBoard({
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeDragId, setActiveDragId] = useState<string | null>(null);
 
   const emailByUser = useMemo(() => {
     const m = new Map<string, string>();
@@ -134,8 +139,13 @@ export function KanbanBoard({
 
   const [, startTransition] = useTransition();
 
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    setActiveDragId(event.active.id as string);
+  }, []);
+
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
+      setActiveDragId(null);
       const taskId = event.active.id as string;
       const overId = event.over?.id as TaskStatus | undefined;
       if (!overId) return;
@@ -203,18 +213,36 @@ export function KanbanBoard({
         </p>
       )}
 
-      <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+      <DndContext
+        sensors={sensors}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragCancel={() => setActiveDragId(null)}
+      >
         <div className="flex flex-1 min-h-0 gap-3 overflow-x-auto px-4 py-4">
           {COLUMNS.map((col) => (
             <KanbanColumn
               key={col.id}
               column={col}
               tasks={tasksByColumn[col.id]}
+              activeDragId={activeDragId}
               emailByUser={emailByUser}
               onOpenTask={setOpenTaskId}
             />
           ))}
         </div>
+        <DragOverlay dropAnimation={null}>
+          {activeDragId
+            ? (() => {
+                const t = tasks.get(activeDragId);
+                if (!t) return null;
+                const email = t.assignee_id
+                  ? emailByUser.get(t.assignee_id) ?? null
+                  : null;
+                return <TaskCardPreview task={t} assigneeEmail={email} />;
+              })()
+            : null}
+        </DragOverlay>
       </DndContext>
 
       {creating && (
@@ -252,6 +280,15 @@ export function KanbanBoard({
               return next;
             });
           }}
+          onLocalDelete={(taskId) => {
+            setTasks((prev) => {
+              if (!prev.has(taskId)) return prev;
+              const next = new Map(prev);
+              next.delete(taskId);
+              return next;
+            });
+            setOpenTaskId(null);
+          }}
         />
       )}
     </div>
@@ -261,11 +298,13 @@ export function KanbanBoard({
 function KanbanColumn({
   column,
   tasks,
+  activeDragId,
   emailByUser,
   onOpenTask,
 }: {
   column: { id: TaskStatus; title: string };
   tasks: TaskRow[];
+  activeDragId: string | null;
   emailByUser: Map<string, string>;
   onOpenTask: (id: string) => void;
 }) {
@@ -297,6 +336,7 @@ function KanbanColumn({
             <TaskCard
               key={t.id}
               task={t}
+              isDragSource={activeDragId === t.id}
               assigneeEmail={
                 t.assignee_id ? emailByUser.get(t.assignee_id) ?? null : null
               }
@@ -311,27 +351,22 @@ function KanbanColumn({
 
 function TaskCard({
   task,
+  isDragSource,
   assigneeEmail,
   onOpen,
 }: {
   task: TaskRow;
+  isDragSource: boolean;
   assigneeEmail: string | null;
   onOpen: () => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } =
-    useDraggable({ id: task.id });
-  const style = transform
-    ? {
-        transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
-      }
-    : undefined;
+  const { attributes, listeners, setNodeRef } = useDraggable({ id: task.id });
   return (
     <div
       ref={setNodeRef}
-      style={style}
-      className={`group rounded border bg-white p-2 text-xs shadow-sm ${
-        isDragging
-          ? "border-brand-400 opacity-60"
+      className={`group rounded border bg-white p-2 text-xs shadow-sm transition-opacity ${
+        isDragSource
+          ? "border-dashed border-brand-300 opacity-30"
           : "border-neutral-200 hover:border-brand-300"
       }`}
     >
@@ -363,6 +398,41 @@ function TaskCard({
             </span>
           </div>
         </button>
+      </div>
+    </div>
+  );
+}
+
+// Visual clone rendered by DragOverlay so the dragged card always sits above
+// columns (DragOverlay portals into a top-level element, escaping the column
+// stacking contexts that previously hid the card during drag).
+function TaskCardPreview({
+  task,
+  assigneeEmail,
+}: {
+  task: TaskRow;
+  assigneeEmail: string | null;
+}) {
+  return (
+    <div className="w-72 cursor-grabbing rounded border border-brand-400 bg-white p-2 text-xs shadow-lg ring-2 ring-brand-200">
+      <div className="flex items-start gap-2">
+        <span aria-hidden className="mt-0.5 select-none text-neutral-400">
+          ⋮⋮
+        </span>
+        <div className="flex-1">
+          <p className="font-semibold text-brand-900">{task.title}</p>
+          {task.description && (
+            <p className="mt-0.5 line-clamp-2 text-[11px] text-neutral-600">
+              {task.description}
+            </p>
+          )}
+          <div className="mt-1.5 flex items-center gap-1.5">
+            <Avatar email={assigneeEmail} />
+            <span className="text-[10px] text-neutral-500">
+              {assigneeEmail ?? "Unassigned"}
+            </span>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -530,6 +600,7 @@ function TaskDetailModal({
   emailByUser,
   onClose,
   onLocalChange,
+  onLocalDelete,
 }: {
   task: TaskRow;
   viewerUserId: string;
@@ -540,6 +611,7 @@ function TaskDetailModal({
   emailByUser: Map<string, string>;
   onClose: () => void;
   onLocalChange: (t: TaskRow) => void;
+  onLocalDelete: (taskId: string) => void;
 }) {
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description ?? "");
@@ -560,7 +632,27 @@ function TaskDetailModal({
   const canReassignAnyone = isGroupManager || isWorkspaceAdmin;
   const canSelfAssign = canSetAssigneeFn(task, viewer, viewerUserId);
   const canChangeReporter = canChangeReporterFn(task, viewer);
+  const canDelete = canDeleteTaskFn(task, viewer);
   const groupManagers = groupMembers.filter((m) => m.role === "manager");
+
+  function onDelete() {
+    if (
+      !window.confirm(
+        `Delete task "${task.title}"? This can't be undone.`,
+      )
+    ) {
+      return;
+    }
+    setError(null);
+    startTransition(async () => {
+      const res = await deleteTaskAction(task.id);
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      onLocalDelete(task.id);
+    });
+  }
 
   function onSaveMeta(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -712,24 +804,38 @@ function TaskDetailModal({
 
         {error && <p className="text-xs text-red-600">{error}</p>}
 
-        <div className="flex justify-end gap-2 pt-1">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={busy}
-            className="rounded border border-neutral-300 px-3 py-1.5 text-xs font-medium"
-          >
-            Close
-          </button>
-          {canEditMeta && (
+        <div className="flex items-center justify-between gap-2 pt-1">
+          <div>
+            {canDelete && (
+              <button
+                type="button"
+                onClick={onDelete}
+                disabled={busy}
+                className="rounded border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-50"
+              >
+                Delete task
+              </button>
+            )}
+          </div>
+          <div className="flex gap-2">
             <button
-              type="submit"
+              type="button"
+              onClick={onClose}
               disabled={busy}
-              className="rounded bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+              className="rounded border border-neutral-300 px-3 py-1.5 text-xs font-medium"
             >
-              {busy ? "Saving…" : "Save"}
+              Close
             </button>
-          )}
+            {canEditMeta && (
+              <button
+                type="submit"
+                disabled={busy}
+                className="rounded bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+              >
+                {busy ? "Saving…" : "Save"}
+              </button>
+            )}
+          </div>
         </div>
       </form>
     </ModalShell>

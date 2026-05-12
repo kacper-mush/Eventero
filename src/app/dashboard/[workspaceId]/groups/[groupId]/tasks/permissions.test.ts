@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   canChangeReporter,
   canCreateTask,
+  canDeleteTask,
   canEditMeta,
   canSetAssignee,
 } from "./permissions";
@@ -103,5 +104,17 @@ describe("canChangeReporter", () => {
     expect(canChangeReporter(task, managerViewer)).toBe(true);
     expect(canChangeReporter(task, adminViewer)).toBe(false);
     expect(canChangeReporter(task, memberViewer)).toBe(false);
+  });
+});
+
+describe("canDeleteTask", () => {
+  it("allows managers and workspace admins/owners", () => {
+    const task = makeTask();
+    expect(canDeleteTask(task, managerViewer)).toBe(true);
+    expect(canDeleteTask(task, adminViewer)).toBe(true);
+  });
+  it("blocks plain members even if they're the reporter", () => {
+    const task = makeTask({ reporter_id: MEMBER });
+    expect(canDeleteTask(task, memberViewer)).toBe(false);
   });
 });

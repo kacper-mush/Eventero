@@ -49,3 +49,10 @@ export function canMoveStatus(_task: TaskRow, _viewer: ViewerContext): boolean {
   // Any group member may change status. RLS handles the "group member" check.
   return true;
 }
+
+export function canDeleteTask(
+  _task: TaskRow,
+  viewer: ViewerContext,
+): boolean {
+  return viewer.isGroupManager || viewer.isWorkspaceAdmin;
+}

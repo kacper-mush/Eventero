@@ -259,6 +259,18 @@ export async function assignTask(
   return { ok: true, data: data as TaskRow };
 }
 
+export async function deleteTask(
+  taskId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { supabase } = await requireUser();
+  const id = uuidSchema.safeParse(taskId);
+  if (!id.success) return { ok: false, error: "Invalid task" };
+
+  const { error } = await supabase.from("tasks").delete().eq("id", id.data);
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
 export async function setTaskReporter(
   taskId: string,
   reporterId: string,

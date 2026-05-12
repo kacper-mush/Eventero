@@ -1,13 +1,15 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 
 import {
   deleteWorkspace,
-  leaveWorkspace,
+  revokeWorkspaceInvitation,
+  sendWorkspaceInvitation,
   transferOwnership,
   updateWorkspace,
   type ActionState,
+  type WorkspaceInvitation,
   type WorkspaceMember,
 } from "../actions";
 import { Modal, SubmitButton } from "../ui";
@@ -44,6 +46,126 @@ export function RenameWorkspaceForm({
       </div>
     </form>
   );
+}
+
+export function InviteMembersSection({
+  workspaceId,
+  pendingInvitations,
+}: {
+  workspaceId: string;
+  pendingInvitations: WorkspaceInvitation[];
+}) {
+  const formRef = useRef<HTMLFormElement>(null);
+  const [state, action] = useActionState<ActionState, FormData>(
+    sendWorkspaceInvitation.bind(null, workspaceId),
+    null,
+  );
+
+  useEffect(() => {
+    if (state?.ok) formRef.current?.reset();
+  }, [state]);
+
+  return (
+    <div className="flex flex-col gap-4">
+      <form
+        ref={formRef}
+        action={action}
+        className="flex flex-col gap-2 sm:flex-row sm:items-start"
+      >
+        <input
+          name="email"
+          type="email"
+          required
+          maxLength={254}
+          placeholder="person@example.com"
+          className="flex-1 rounded border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500"
+        />
+        <select
+          name="role"
+          defaultValue="member"
+          aria-label="Workspace role"
+          className="rounded border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500"
+        >
+          <option value="member">Member</option>
+          <option value="admin">Admin</option>
+        </select>
+        <div className="flex items-center gap-2">
+          <SubmitButton>Send invite</SubmitButton>
+          {state?.ok && (
+            <span className="text-xs text-green-700">Invitation sent</span>
+          )}
+          {state?.error && (
+            <span className="text-xs text-red-600">{state.error}</span>
+          )}
+        </div>
+      </form>
+
+      {pendingInvitations.length > 0 && (
+        <div className="flex flex-col gap-1">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+            Pending invitations ({pendingInvitations.length})
+          </p>
+          <ul className="divide-y divide-neutral-200 rounded border border-neutral-200">
+            {pendingInvitations.map((inv) => (
+              <PendingInvitationRow
+                key={inv.id}
+                invitation={inv}
+                workspaceId={workspaceId}
+              />
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PendingInvitationRow({
+  invitation,
+  workspaceId,
+}: {
+  invitation: WorkspaceInvitation;
+  workspaceId: string;
+}) {
+  const [state, action] = useActionState<ActionState, FormData>(
+    revokeWorkspaceInvitation.bind(null, workspaceId, invitation.id),
+    null,
+  );
+
+  const expires = new Date(invitation.expires_at);
+  const expiresLabel = formatRelativeFromNow(expires);
+
+  return (
+    <li className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+      <div className="flex min-w-0 flex-col">
+        <span className="truncate font-medium">{invitation.email}</span>
+        <span className="text-[11px] text-neutral-500">
+          {invitation.workspace_role} · expires {expiresLabel}
+        </span>
+        {state?.error && (
+          <span className="text-[11px] text-red-600">{state.error}</span>
+        )}
+      </div>
+      <form action={action}>
+        <button
+          type="submit"
+          className="rounded border border-neutral-300 bg-white px-2 py-1 text-xs font-semibold transition hover:bg-neutral-100"
+        >
+          Revoke
+        </button>
+      </form>
+    </li>
+  );
+}
+
+function formatRelativeFromNow(date: Date): string {
+  const diffMs = date.getTime() - Date.now();
+  if (diffMs <= 0) return "soon";
+  const days = Math.round(diffMs / (1000 * 60 * 60 * 24));
+  if (days >= 1) return `in ${days} day${days === 1 ? "" : "s"}`;
+  const hours = Math.round(diffMs / (1000 * 60 * 60));
+  if (hours >= 1) return `in ${hours} hour${hours === 1 ? "" : "s"}`;
+  return "soon";
 }
 
 export function TransferOwnershipSection({
@@ -139,88 +261,6 @@ function TransferOwnershipDialog({
             Cancel
           </button>
           <SubmitButton>Transfer</SubmitButton>
-        </div>
-      </form>
-    </Modal>
-  );
-}
-
-export function LeaveWorkspaceSection({
-  workspaceId,
-  workspaceName,
-  canLeave,
-  isSoleMember,
-}: {
-  workspaceId: string;
-  workspaceName: string;
-  canLeave: boolean;
-  isSoleMember: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        disabled={!canLeave}
-        title={
-          canLeave ? undefined : "Transfer ownership before leaving the workspace"
-        }
-        className="self-start rounded border border-neutral-300 bg-white px-3 py-1.5 text-sm font-semibold transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        Leave workspace…
-      </button>
-      {open && (
-        <LeaveWorkspaceDialog
-          workspaceId={workspaceId}
-          workspaceName={workspaceName}
-          isSoleMember={isSoleMember}
-          onClose={() => setOpen(false)}
-        />
-      )}
-    </>
-  );
-}
-
-function LeaveWorkspaceDialog({
-  workspaceId,
-  workspaceName,
-  isSoleMember,
-  onClose,
-}: {
-  workspaceId: string;
-  workspaceName: string;
-  isSoleMember: boolean;
-  onClose: () => void;
-}) {
-  const [state, action] = useActionState<ActionState, FormData>(
-    leaveWorkspace.bind(null, workspaceId),
-    null,
-  );
-
-  return (
-    <Modal title={`Leave ${workspaceName}?`} onClose={onClose}>
-      <form action={action} className="flex flex-col gap-3">
-        <p className="text-sm text-neutral-700">
-          {isSoleMember
-            ? "You are the only member. Leaving will delete this workspace and everything in it."
-            : "You will lose access to this workspace immediately."}
-        </p>
-        {state?.error && (
-          <p className="text-xs text-red-600">{state.error}</p>
-        )}
-        <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded border border-neutral-300 px-3 py-1.5 text-sm font-medium"
-          >
-            Cancel
-          </button>
-          <SubmitButton variant="danger">
-            {isSoleMember ? "Leave and delete" : "Leave workspace"}
-          </SubmitButton>
         </div>
       </form>
     </Modal>

@@ -19,15 +19,24 @@ Magic-link login page, auth callback route, session-refreshing proxy (`proxy.ts`
 
 ## 3. Workspace lifecycle ✅
 
-Authenticated `/dashboard` shell with a sidebar workspace list and a settings page per workspace (rename, transfer ownership, leave, delete). Ownership transfer and leaving go through `SECURITY DEFINER` RPCs (`transfer_workspace_ownership`, `leave_workspace`) so they can safely bypass the `workspace_memberships` RLS that forbids touching `owner` rows.
+Authenticated `/dashboard` shell with a sidebar workspace list and a settings page per workspace (rename, transfer ownership, delete). Ownership transfer goes through a `SECURITY DEFINER` RPC (`transfer_workspace_ownership`) so it can safely bypass the `workspace_memberships` RLS that forbids touching `owner` rows.
 
 **Decisions made:**
 - **Hard delete** via `on delete cascade`. Deleting a workspace removes everything inside it (groups, channels, messages, tasks, memberships, invitations). No soft-delete column.
-- **Sole-owner leave** = delete the workspace. Owners with co-members must transfer first; the RPC raises if they don't.
+- **No self-service leave.** Removal is the only exit and is admin-only. A sole owner who wants out uses Delete workspace. (The `leave_workspace` RPC shipped earlier was dropped in a follow-up migration once this policy landed.)
 
-## 4. Groups & invitations
+## 4. Groups & invitations ✅
 
-Within a workspace: create groups, send email-keyed invites with a predefined role, accept invites, manage group membership. The invite-accept flow is what bridges magic-link auth to membership rows.
+Within a workspace: create groups, send invitations with a predefined role, accept invites, manage group membership.
+
+**Groups** ✅ — sidebar lists groups under the active workspace; workspace admins create/delete groups, managers rename and run member CRUD on their own group, plain group members see a read-only roster. RLS-gated end-to-end; group managers got `UPDATE` rights on `groups` via a follow-up migration (DELETE stayed admin-only). The sidebar slot is shared with future channels so Step 5 inherits the IA.
+
+**Invitations** ✅ — workspace admins invite by email from the workspace settings page. **In-app only** (no email delivery yet) and **reject-if-no-account** (the invitee must already have an Eventero account); the send RPC raises `no_account` otherwise. Invites are single-use, role-locked, and expire after 7 days. Recipients see them in a sidebar **Notifications** inbox (`/dashboard/notifications`) and accept or decline from there. Lifecycle (`pending` → `accepted` / `declined` / `revoked` / `expired`) lives on `invitations.status`; all transitions go through `SECURITY DEFINER` RPCs because the invitee can't insert into `workspace_memberships` directly. Notifications are a generic polymorphic table so future event types (mentions, task assignments) can reuse the inbox.
+
+**Deferred follow-ups inside this slice:**
+- Email delivery (Resend or Supabase Auth invites). Plumbing point: extend `send_workspace_invitation` to enqueue an email after insert.
+- Group-scoped invitations. The `invitations` table already supports `group_id` + `group_role`; only the workspace path has a UI today.
+- Editing the role on a pending invite (current rule: revoke and resend).
 
 ## 5. Channels & messaging
 

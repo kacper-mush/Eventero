@@ -16,6 +16,8 @@ export type WorkspaceMember = {
   role: "owner" | "admin" | "member";
 };
 
+export type Group = { id: string; workspace_id: string; name: string };
+
 const nameSchema = z
   .string()
   .trim()
@@ -27,21 +29,63 @@ const uuidSchema = z.string().uuid("Invalid id");
 async function requireUser() {
   const supabase = await createClient();
   const { data, error } = await supabase.auth.getClaims();
-  const userId = data?.claims?.sub;
+  const claims = data?.claims;
+  const userId = claims?.sub;
   if (error || !userId) {
     redirect("/login");
   }
-  return { supabase, userId };
+  const email = typeof claims.email === "string" ? claims.email : "";
+  return { supabase, userId, email };
 }
 
-export async function getWorkspaces(): Promise<Workspace[]> {
-  const { supabase } = await requireUser();
-  const { data, error } = await supabase
-    .from("workspaces")
-    .select("id, name")
-    .order("name", { ascending: true });
-  if (error) throw new Error(error.message);
-  return data ?? [];
+export type SidebarData = {
+  email: string;
+  workspaces: Workspace[];
+  groups: Group[];
+  unreadNotificationCount: number;
+  // Workspaces where the current user is owner or admin. Used to gate UI
+  // controls that would otherwise hit an RLS error on submit.
+  adminWorkspaceIds: string[];
+};
+
+// One server call for everything the dashboard layout needs. Hits
+// supabase.auth.getClaims() exactly once (inside requireUser), then runs
+// the four data queries in parallel against the same authenticated client.
+export async function getSidebarData(): Promise<SidebarData> {
+  const { supabase, userId, email } = await requireUser();
+
+  const [workspacesRes, groupsRes, unreadRes, rolesRes] = await Promise.all([
+    supabase
+      .from("workspaces")
+      .select("id, name")
+      .order("name", { ascending: true }),
+    supabase
+      .from("groups")
+      .select("id, workspace_id, name")
+      .order("name", { ascending: true }),
+    supabase
+      .from("notifications")
+      .select("id", { count: "exact", head: true })
+      .is("read_at", null),
+    supabase
+      .from("workspace_memberships")
+      .select("workspace_id, role")
+      .eq("user_id", userId)
+      .in("role", ["owner", "admin"]),
+  ]);
+
+  if (workspacesRes.error) throw new Error(workspacesRes.error.message);
+  if (groupsRes.error) throw new Error(groupsRes.error.message);
+  if (unreadRes.error) throw new Error(unreadRes.error.message);
+  if (rolesRes.error) throw new Error(rolesRes.error.message);
+
+  return {
+    email,
+    workspaces: workspacesRes.data ?? [],
+    groups: groupsRes.data ?? [],
+    unreadNotificationCount: unreadRes.count ?? 0,
+    adminWorkspaceIds: (rolesRes.data ?? []).map((r) => r.workspace_id),
+  };
 }
 
 export async function getWorkspaceMembers(
@@ -122,25 +166,6 @@ export async function deleteWorkspace(
   redirect("/dashboard");
 }
 
-export async function leaveWorkspace(
-  workspaceId: string,
-  _prev: ActionState,
-  _formData: FormData,
-): Promise<ActionState> {
-  const { supabase } = await requireUser();
-
-  const id = uuidSchema.safeParse(workspaceId);
-  if (!id.success) return { ok: false, error: "Invalid workspace" };
-
-  const { error } = await supabase.rpc("leave_workspace", {
-    _workspace_id: id.data,
-  });
-  if (error) return { ok: false, error: error.message };
-
-  revalidatePath("/dashboard", "layout");
-  redirect("/dashboard");
-}
-
 export async function transferOwnership(
   workspaceId: string,
   _prev: ActionState,
@@ -162,6 +187,244 @@ export async function transferOwnership(
   if (error) return { ok: false, error: error.message };
 
   revalidatePath(`/dashboard/${id.data}`);
+  revalidatePath("/dashboard", "layout");
+  return { ok: true };
+}
+
+export async function createGroup(
+  workspaceId: string,
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const { supabase } = await requireUser();
+
+  const id = uuidSchema.safeParse(workspaceId);
+  const name = nameSchema.safeParse(formData.get("name"));
+  if (!id.success) return { ok: false, error: "Invalid workspace" };
+  if (!name.success) {
+    return { ok: false, error: name.error.issues[0]?.message };
+  }
+
+  const groupId = crypto.randomUUID();
+  const { error } = await supabase
+    .from("groups")
+    .insert({ id: groupId, workspace_id: id.data, name: name.data });
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/dashboard", "layout");
+  redirect(`/dashboard/${id.data}/groups/${groupId}`);
+}
+
+export type WorkspaceInvitation = {
+  id: string;
+  email: string;
+  workspace_role: "admin" | "member";
+  expires_at: string;
+  created_at: string;
+  invited_by_email: string | null;
+};
+
+export type Notification = {
+  id: string;
+  type: "workspace_invitation";
+  read_at: string | null;
+  created_at: string;
+  invitation_id: string | null;
+  invitation_status:
+    | "pending"
+    | "accepted"
+    | "declined"
+    | "revoked"
+    | "expired"
+    | null;
+  invitation_expires_at: string | null;
+  invitation_role: "admin" | "member" | null;
+  workspace_id: string | null;
+  workspace_name: string | null;
+  inviter_email: string | null;
+};
+
+const emailSchema = z
+  .string()
+  .trim()
+  .min(3, "Email is required")
+  .max(254, "Email is too long")
+  .email("Enter a valid email");
+
+const roleSchema = z.enum(["admin", "member"]);
+
+// Map Postgres RAISE errors from the invitation RPCs to UI strings. The RPC
+// raises `exception '<code>'`; postgres-js surfaces it on `error.message`.
+function invitationErrorMessage(message: string): string {
+  if (message.includes("no_account")) {
+    return "No Eventero account is registered with that email.";
+  }
+  if (message.includes("already_member")) {
+    return "That user already belongs to this workspace.";
+  }
+  if (message.includes("already_invited")) {
+    return "A pending invitation for that email already exists.";
+  }
+  if (message.includes("cannot invite yourself")) {
+    return "You cannot invite yourself.";
+  }
+  if (message.includes("invitation_expired")) {
+    return "This invitation has expired.";
+  }
+  if (message.includes("invitation_not_pending")) {
+    return "This invitation is no longer pending.";
+  }
+  if (message.includes("invitation_not_yours")) {
+    return "This invitation is not addressed to you.";
+  }
+  if (message.includes("invitation_not_found")) {
+    return "Invitation not found.";
+  }
+  if (message.includes("only workspace admins")) {
+    return "Only workspace admins can do this.";
+  }
+  return message;
+}
+
+export async function getWorkspacePendingInvitations(
+  workspaceId: string,
+): Promise<WorkspaceInvitation[]> {
+  const { supabase } = await requireUser();
+  const id = uuidSchema.safeParse(workspaceId);
+  if (!id.success) return [];
+
+  const { data, error } = await supabase.rpc(
+    "get_workspace_pending_invitations",
+    { _workspace_id: id.data },
+  );
+  if (error) throw new Error(error.message);
+  return (data ?? []) as WorkspaceInvitation[];
+}
+
+export async function getNotifications(): Promise<Notification[]> {
+  const { supabase } = await requireUser();
+  const { data, error } = await supabase.rpc("get_my_notifications");
+  if (error) throw new Error(error.message);
+  return (data ?? []) as Notification[];
+}
+
+export async function sendWorkspaceInvitation(
+  workspaceId: string,
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const { supabase } = await requireUser();
+
+  const id = uuidSchema.safeParse(workspaceId);
+  const email = emailSchema.safeParse(formData.get("email"));
+  const role = roleSchema.safeParse(formData.get("role"));
+  if (!id.success) return { ok: false, error: "Invalid workspace" };
+  if (!email.success) {
+    return { ok: false, error: email.error.issues[0]?.message };
+  }
+  if (!role.success) return { ok: false, error: "Select a role" };
+
+  const { error } = await supabase.rpc("send_workspace_invitation", {
+    _workspace_id: id.data,
+    _email: email.data,
+    _role: role.data,
+  });
+  if (error) {
+    return { ok: false, error: invitationErrorMessage(error.message) };
+  }
+
+  revalidatePath(`/dashboard/${id.data}`);
+  return { ok: true };
+}
+
+export async function revokeWorkspaceInvitation(
+  workspaceId: string,
+  invitationId: string,
+  _prev: ActionState,
+  _formData: FormData,
+): Promise<ActionState> {
+  const { supabase } = await requireUser();
+
+  const ws = uuidSchema.safeParse(workspaceId);
+  const inv = uuidSchema.safeParse(invitationId);
+  if (!ws.success) return { ok: false, error: "Invalid workspace" };
+  if (!inv.success) return { ok: false, error: "Invalid invitation" };
+
+  const { error } = await supabase.rpc("revoke_workspace_invitation", {
+    _invitation_id: inv.data,
+  });
+  if (error) {
+    return { ok: false, error: invitationErrorMessage(error.message) };
+  }
+
+  revalidatePath(`/dashboard/${ws.data}`);
+  return { ok: true };
+}
+
+export async function acceptInvitation(
+  invitationId: string,
+  _prev: ActionState,
+  _formData: FormData,
+): Promise<ActionState> {
+  const { supabase } = await requireUser();
+
+  const inv = uuidSchema.safeParse(invitationId);
+  if (!inv.success) return { ok: false, error: "Invalid invitation" };
+
+  const { data, error } = await supabase.rpc("accept_workspace_invitation", {
+    _invitation_id: inv.data,
+  });
+  if (error) {
+    return { ok: false, error: invitationErrorMessage(error.message) };
+  }
+
+  revalidatePath("/dashboard", "layout");
+  revalidatePath("/dashboard/notifications");
+  if (typeof data === "string") {
+    redirect(`/dashboard/${data}`);
+  }
+  return { ok: true };
+}
+
+export async function declineInvitation(
+  invitationId: string,
+  _prev: ActionState,
+  _formData: FormData,
+): Promise<ActionState> {
+  const { supabase } = await requireUser();
+
+  const inv = uuidSchema.safeParse(invitationId);
+  if (!inv.success) return { ok: false, error: "Invalid invitation" };
+
+  const { error } = await supabase.rpc("decline_workspace_invitation", {
+    _invitation_id: inv.data,
+  });
+  if (error) {
+    return { ok: false, error: invitationErrorMessage(error.message) };
+  }
+
+  revalidatePath("/dashboard/notifications");
+  return { ok: true };
+}
+
+export async function markNotificationRead(
+  notificationId: string,
+  _prev: ActionState,
+  _formData: FormData,
+): Promise<ActionState> {
+  const { supabase } = await requireUser();
+
+  const id = uuidSchema.safeParse(notificationId);
+  if (!id.success) return { ok: false, error: "Invalid notification" };
+
+  const { error } = await supabase
+    .from("notifications")
+    .update({ read_at: new Date().toISOString() })
+    .eq("id", id.data)
+    .is("read_at", null);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/dashboard/notifications");
   revalidatePath("/dashboard", "layout");
   return { ok: true };
 }

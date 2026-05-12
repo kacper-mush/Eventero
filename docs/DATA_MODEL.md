@@ -15,7 +15,8 @@ auth.users ────┬──── workspaces ───── workspace_memb
                │                     │
                │                     └── tasks
                │
-               └──── invitations  (email-keyed, single-use, 7-day TTL)
+               ├──── invitations  (email-keyed, single-use, 7-day TTL)
+               └──── notifications  (per-user inbox, polymorphic by type)
 ```
 
 | Table | Purpose |
@@ -27,7 +28,8 @@ auth.users ────┬──── workspaces ───── workspace_memb
 | `channels` | Chat surfaces. `group_id is null` → workspace-wide; otherwise group-scoped. |
 | `messages` | `bigint identity` id for cheap chronological ordering. |
 | `tasks` | Per-group. Fields: title, assignee, status (`open`\|`done`), due date. |
-| `invitations` | Email-keyed pending memberships with a role and 7-day expiry. |
+| `invitations` | Email-keyed pending memberships with a role, 7-day expiry, and a `status` lifecycle (`pending` → `accepted` \| `declined` \| `revoked` \| `expired`). |
+| `notifications` | Per-user inbox. `type` discriminates payload; current types: `workspace_invitation`. Inserts/deletes are RPC-only; recipients can read and flip `read_at`. |
 
 ## Roles
 
@@ -43,14 +45,13 @@ Two scopes, three concepts:
 
 Workspace admins always inherit management rights over groups within their workspace (see RLS policies on `group_memberships`).
 
-### Ownership transfer & leaving
+### Ownership transfer & removal
 
-The membership policies forbid creating, updating, or deleting rows where `role = 'owner'`. Two `SECURITY DEFINER` RPCs handle the operations that need to touch the owner row:
+The membership policies forbid creating, updating, or deleting rows where `role = 'owner'`. **There is no self-service "leave workspace"** — removal is the only exit, and `workspace_memberships` DELETE is admin-only by RLS. A sole owner who wants to back out uses Delete workspace, which cascades through everything inside.
 
-- **`transfer_workspace_ownership(_workspace_id, _new_owner_id)`** — caller must be the current owner; target must already be an `admin` or `member` of the workspace. Demotes the caller to `admin` first, then promotes the target to `owner` (the partial unique index allows only one `owner` per workspace, so order matters).
-- **`leave_workspace(_workspace_id)`** — non-owners drop their own membership row. An owner with co-members is refused (must transfer first); a sole owner triggers a `DELETE` of the workspace, which cascades through groups, channels, messages, tasks, memberships, and invitations.
+- **`transfer_workspace_ownership(_workspace_id, _new_owner_id)`** — `SECURITY DEFINER`. Caller must be the current owner; target must already be an `admin` or `member` of the workspace. Demotes the caller to `admin` first, then promotes the target to `owner` (the partial unique index allows only one `owner` per workspace, so order matters).
 
-A third helper, **`get_workspace_members(_workspace_id)`**, returns `(user_id, email, role)` for fellow members. `auth.users` is not exposed via PostgREST, so any UI that needs to *name* a user (e.g. the transfer dropdown) goes through this function. The caller must be a member of the workspace.
+A helper, **`get_workspace_members(_workspace_id)`**, returns `(user_id, email, role)` for fellow members. `auth.users` is not exposed via PostgREST, so any UI that needs to *name* a user (e.g. the transfer dropdown) goes through this function. The caller must be a member of the workspace.
 
 ## Row-level security
 
@@ -73,12 +74,13 @@ Policies route through these `SECURITY DEFINER` helper functions to avoid recurs
 | --- | --- | --- | --- |
 | `workspaces` | members | any authenticated user can create (becomes owner via trigger); admins can update | owner only |
 | `workspace_memberships` | self + workspace admins | workspace admins (only `admin`/`member` roles) | workspace admins (except `owner` row) |
-| `groups` | workspace members | workspace admins | workspace admins |
+| `groups` | workspace admins (all groups in the workspace) + group members (groups they belong to) | workspace admins + group managers (rename) | workspace admins |
 | `group_memberships` | self + group members + workspace admins | group managers + workspace admins (only for users already in the parent workspace) | group managers + workspace admins |
 | `channels` | workspace members (workspace-wide) or group members (group channels) | workspace admins (group channels must reference a group in the same workspace) | workspace admins |
 | `messages` | anyone who can read the parent channel | same (must set `author_id = auth.uid()`) | the author |
 | `tasks` | group members | group members | group managers |
-| `invitations` | workspace admins; the invitee can see their own pending invites by matching `auth.jwt() ->> 'email'` | workspace admins | workspace admins |
+| `invitations` | workspace admins; the invitee can see their own pending invites (matching either `invited_user_id` or `auth.jwt() ->> 'email'`) | workspace admins (transitions go through RPCs) | workspace admins |
+| `notifications` | self | self (only flips `read_at`) | RPC-only |
 
 ## Bootstrap trigger
 
@@ -88,11 +90,29 @@ The trigger is `SECURITY DEFINER` so it bypasses the membership INSERT policy.
 
 ## Invitations
 
-- Keyed by **email** (not by `auth.users.id`) so an organizer can invite people before they sign in.
-- **Single-use**: `consumed_at timestamptz`. A unique index on `(workspace_id, coalesce(group_id, …), lower(email)) where consumed_at is null` prevents duplicate pending invites.
-- **TTL**: `expires_at` defaults to `now() + interval '7 days'`. The accept flow (built later) must check `expires_at > now() and consumed_at is null`.
-- Group-scoped invites require both `group_id` *and* `group_role`; workspace-only invites have neither. Enforced by a `CHECK` constraint.
-- The actual "accept invitation → create memberships → mark consumed" step is **not** a plain RLS-permitted UPDATE. It needs a `SECURITY DEFINER` RPC (added with the invitation-accept flow in ROADMAP item 4) because the invitee is not yet an admin, so they cannot insert into `workspace_memberships` directly.
+- Keyed by **email** for lookup, with an additional `invited_user_id` populated at send time. The current product rule is **reject-if-no-account**: `send_workspace_invitation` resolves the email to an `auth.users` row up-front and refuses if none exists. Email-keyed storage is retained so a future "invite people before they sign in" mode can be re-enabled without a schema change.
+- **Lifecycle** is tracked on `status` (`pending` → `accepted` \| `declined` \| `revoked` \| `expired`). `consumed_at` and `responded_at` are kept in sync as timestamps. A partial unique index on `(workspace_id, coalesce(group_id, …), lower(email)) where status = 'pending'` prevents duplicate live invites.
+- **TTL**: `expires_at` defaults to `now() + interval '7 days'`. `accept_workspace_invitation` checks the window and flips the row to `expired` if it has passed.
+- Group-scoped invites require both `group_id` *and* `group_role`; workspace-only invites have neither. Enforced by a `CHECK` constraint. Only the workspace-scoped path has a UI today.
+- The accept/decline/revoke transitions are **not** plain RLS-permitted UPDATEs. They run through `SECURITY DEFINER` RPCs because the invitee isn't yet a workspace admin and so cannot insert into `workspace_memberships` directly:
+  - **`send_workspace_invitation(workspace_id, email, role)`** — admin-only. Raises `no_account` / `already_member` / `already_invited`. On success, inserts the invitation and a matching `notifications` row for the recipient atomically.
+  - **`accept_workspace_invitation(invitation_id)`** — invitee-only. Inserts `workspace_memberships`, finalises the invitation, and marks the matching notification read. Returns the workspace id so the caller can redirect.
+  - **`decline_workspace_invitation(invitation_id)`** — invitee-only. Flips status without creating a membership.
+  - **`revoke_workspace_invitation(invitation_id)`** — admin-only. Flips status and deletes the recipient's notification, since the invite no longer exists from their perspective.
+  - **`get_workspace_pending_invitations(workspace_id)`** — admin-only listing helper that joins `auth.users` for the inviter email.
+
+## Notifications
+
+A generic per-user inbox. One row per notification; the `type` column discriminates the shape of `payload jsonb`. Current types:
+
+- `workspace_invitation` — `payload = {"invitation_id": uuid}`. The source of truth for the invitation's current status stays on `invitations`.
+
+RLS:
+- **Read** — `user_id = auth.uid()`.
+- **Update** — same; recipients can only flip `read_at` (no other field is mutated by any code path).
+- **Insert / Delete** — no `GRANT`. Only the invitation RPCs touch these.
+
+`get_my_notifications()` is a `SECURITY DEFINER` helper that joins each notification to its underlying object (currently `invitations` + `workspaces` + `auth.users`) so the `/dashboard/notifications` page can render headlines without a chain of client-side joins.
 
 ## Realtime
 

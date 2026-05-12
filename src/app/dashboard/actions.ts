@@ -88,6 +88,71 @@ export async function getSidebarData(): Promise<SidebarData> {
   };
 }
 
+export type MyTaskStatus = "TODO" | "IN_PROGRESS" | "DONE";
+
+export type MyTask = {
+  id: string;
+  title: string;
+  description: string | null;
+  status: MyTaskStatus;
+  group_id: string;
+  created_at: string;
+};
+
+export type MyTaskGroup = {
+  id: string;
+  name: string;
+  workspace_id: string;
+  workspace_name: string;
+};
+
+export type MyTasksData = {
+  userId: string;
+  tasks: MyTask[];
+  // Every group the viewer can see, with its workspace name — used to label
+  // tasks and to resolve names for tasks that arrive over realtime.
+  groups: MyTaskGroup[];
+};
+
+// Tasks assigned to the current user, across every workspace and group they
+// belong to. The `tasks` SELECT policy already scopes rows to the viewer's
+// groups; the `assignee_id` filter narrows that to "mine".
+export async function getMyTasksData(): Promise<MyTasksData> {
+  const { supabase, userId } = await requireUser();
+
+  const [tasksRes, groupsRes] = await Promise.all([
+    supabase
+      .from("tasks")
+      .select("id, title, description, status, group_id, created_at")
+      .eq("assignee_id", userId)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("groups")
+      .select("id, name, workspace_id, workspaces!inner(name)"),
+  ]);
+  if (tasksRes.error) throw new Error(tasksRes.error.message);
+  if (groupsRes.error) throw new Error(groupsRes.error.message);
+
+  const groups: MyTaskGroup[] = (
+    (groupsRes.data ?? []) as Array<{
+      id: string;
+      name: string;
+      workspace_id: string;
+      workspaces: { name: string } | { name: string }[] | null;
+    }>
+  ).map((g) => {
+    const ws = Array.isArray(g.workspaces) ? g.workspaces[0] : g.workspaces;
+    return {
+      id: g.id,
+      name: g.name,
+      workspace_id: g.workspace_id,
+      workspace_name: ws?.name ?? "(unknown)",
+    };
+  });
+
+  return { userId, tasks: (tasksRes.data ?? []) as MyTask[], groups };
+}
+
 export async function getWorkspaceMembers(
   workspaceId: string,
 ): Promise<WorkspaceMember[]> {

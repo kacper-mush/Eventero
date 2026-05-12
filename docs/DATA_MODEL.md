@@ -27,7 +27,7 @@ auth.users ────┬──── workspaces ───── workspace_memb
 | `group_memberships` | Composite key `(group_id, user_id)`. Role is `manager` \| `member`. |
 | `channels` | Chat surfaces. `group_id is null` → workspace-wide ("general"); otherwise group-scoped. Auto-created by trigger — one global channel per workspace, one per group — with a partial unique index enforcing each invariant. |
 | `messages` | `bigint identity` id for cheap chronological ordering. |
-| `tasks` | Per-group. Fields: title, assignee, status (`open`\|`done`), due date. |
+| `tasks` | Per-group Kanban cards. Fields: title, description, status (`TODO`\|`IN_PROGRESS`\|`DONE`), `assignee_id`, `reporter_id`. Field-level write rules (status / assignee / reporter / title+description) are enforced by a `BEFORE UPDATE` trigger; INSERT is restricted to group managers + workspace admins. |
 | `invitations` | Email-keyed pending memberships with a role, 7-day expiry, and a `status` lifecycle (`pending` → `accepted` \| `declined` \| `revoked` \| `expired`). |
 | `notifications` | Per-user **account-level** inbox (cross-workspace events). `type` discriminates payload; current types: `workspace_invitation`. Inserts/deletes are RPC-only; recipients can read and flip `read_at`. |
 | `group_notifications` | Per-group "drawer mailbox": `@mention` + task events (`assigned`/`done`) for a recipient in one group. |
@@ -42,8 +42,8 @@ Two scopes, three concepts:
   - `admin` — manages groups, channels, invitations, and other memberships (cannot create/update/delete `owner` rows).
   - `member` — read access to the workspace shell and any groups they belong to.
 - **Group role** (`group_memberships.role`): `manager`, `member`.
-  - `manager` — adds/removes members of the group, deletes tasks.
-  - `member` — reads/writes messages and tasks in the group.
+  - `manager` — adds/removes members of the group, creates/deletes tasks, reassigns tasks to anyone, hands the reporter role to another manager.
+  - `member` — reads/writes messages in the group; on tasks, may change status and self-assign an unassigned task.
 
 Workspace admins always inherit management rights over groups within their workspace (see RLS policies on `group_memberships`).
 
@@ -80,7 +80,7 @@ Policies route through these `SECURITY DEFINER` helper functions to avoid recurs
 | `group_memberships` | self + group members + workspace admins | group managers + workspace admins (only for users already in the parent workspace) | group managers + workspace admins |
 | `channels` | workspace members (workspace-wide) or group members (group channels) | workspace admins (group channels must reference a group in the same workspace) | workspace admins |
 | `messages` | anyone who can read the parent channel | same (must set `author_id = auth.uid()`) | the author |
-| `tasks` | group members | group members | group managers |
+| `tasks` | group members + workspace admins | INSERT: group managers + workspace admins. UPDATE: any group member at the RLS layer, narrowed per-field by the `enforce_task_update_rules` trigger (status: any member; assignee: members self-assign into an empty slot only, managers/admins assign anyone; reporter: manager→manager only; title/description: managers or the current reporter). | group managers + workspace admins |
 | `invitations` | workspace admins; the invitee can see their own pending invites (matching either `invited_user_id` or `auth.jwt() ->> 'email'`) | workspace admins (transitions go through RPCs) | workspace admins |
 | `notifications` | self | self (only flips `read_at`) | RPC-only |
 

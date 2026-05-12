@@ -37,6 +37,7 @@ export function Sidebar({
     setMobileOpen(false);
   }
   const onNotifications = pathname === "/dashboard/notifications";
+  const onMyTasks = pathname === "/dashboard/my-tasks";
   const [newWorkspaceOpen, setNewWorkspaceOpen] = useState(false);
   const [newGroupWorkspaceId, setNewGroupWorkspaceId] = useState<string | null>(
     null,
@@ -108,7 +109,7 @@ export function Sidebar({
       <Link
         href="/dashboard/notifications"
         aria-current={onNotifications ? "page" : undefined}
-        className={`mx-2 mb-3 flex items-center justify-between rounded px-3 py-2 text-sm font-medium transition ${
+        className={`mx-2 mt-1 flex items-center justify-between rounded px-3 py-2 text-sm font-medium transition ${
           onNotifications ? "bg-white/20" : "hover:bg-white/10"
         }`}
       >
@@ -118,6 +119,16 @@ export function Sidebar({
             {unreadNotificationCount}
           </span>
         )}
+      </Link>
+
+      <Link
+        href="/dashboard/my-tasks"
+        aria-current={onMyTasks ? "page" : undefined}
+        className={`mx-2 mt-1 mb-3 flex items-center rounded px-3 py-2 text-sm font-medium transition ${
+          onMyTasks ? "bg-white/20" : "hover:bg-white/10"
+        }`}
+      >
+        My tasks
       </Link>
 
       <div className="flex items-center justify-between px-4 pb-2">

@@ -50,24 +50,27 @@ Per-group channels (live chat + @mention drawer) shipped in steps under "Live ch
 - Basic formatting / markdown rendering in message bodies.
 - Pagination beyond the most-recent 50 messages.
 
-## 6. Task boards
+## 6. Task boards ✅
 
-Per-group task list, create/assign/complete tasks, "my tasks" view aggregated across groups, realtime updates.
+Per-group **Kanban board** (3 columns, drag to change status), create/assign tasks, a per-group task detail modal with field-level permissions, and a **"My tasks"** view at `/dashboard/my-tasks` aggregating everything assigned to the viewer across all workspaces/groups (grouped by status, links back to each group's board). Realtime on `tasks` everywhere — the board filters to one group; the My-tasks view listens unfiltered and adds/removes rows as `assignee_id` changes.
 
-**🔍 Decisions needed:**
-- Task fields — minimum (title, assignee, status, due) vs richer (labels, priority, comments, attachments).
-- Task lifecycle — `open / done`, or also `in-progress`?
+**Decisions made:**
+- **Task fields:** title, description, status, assignee, reporter. No due date (dropped in the Kanban migration), labels, priority, comments, or attachments.
+- **Lifecycle:** `TODO / IN_PROGRESS / DONE` (migrated from the original `open / done`).
+- **Permissions:** INSERT is group-managers + workspace admins/owners; status is any group member; self-assign only into an empty slot for plain members; reporter handoff is manager→manager only; title/description editable by managers or the current reporter. Enforced by a `BEFORE UPDATE` trigger + RLS (see `20260515060000_tasks_kanban.sql`).
 
-## 7. UI foundation & navigation
+**Deferred follow-ups inside this slice:**
+- Notifications already fan out on `task_assigned` / `task_done` into the per-group drawer mailbox (`group_notifications`), not the global inbox.
 
-Slack-like layout: sidebar (workspaces switcher, groups, channels), main content area, top bar. Wire `shadcn/ui` with a small starting set: sidebar, button, input, card, dialog, dropdown.
+## 7. UI foundation & navigation — *layout done; shadcn not adopted*
 
-**🔍 Decisions needed:**
-- Information architecture — where the workspace switcher lives, how groups vs channels are visually distinguished, mobile collapse behavior.
+The Slack-like layout is built and in use: collapsing sidebar with the workspace list, per-workspace `#general` + Settings + Groups, top-level Notifications and My-tasks links, a mobile off-canvas drawer (#38), `GroupShell` with a content pane + right drawer. Tailwind design tokens live in `globals.css` (see `DESIGN.md`).
 
-## 8. TanStack Query wiring
+**Not done:** `shadcn/ui` was never wired — no `components.json`, no `src/components/ui/`, no Radix deps. Current UI is hand-rolled Tailwind. Adopting shadcn is optional polish, not on the demo path.
 
-Provider in root layout. Per-route query keys. Realtime subscriptions invalidate the relevant queries on insert/update/delete.
+## 8. TanStack Query wiring — *not started*
+
+`@tanstack/react-query` is in `package.json` but unused. No provider, no query keys. Realtime currently updates client state directly via `postgres_changes` subscriptions in each surface (chat, kanban, my-tasks, mentions). Either wire Query for caching/invalidation, or consciously cut it for the demo.
 
 ## 9. Demo seeding & polish
 

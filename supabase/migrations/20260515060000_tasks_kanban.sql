@@ -188,5 +188,11 @@ create trigger tasks_before_update_enforce_rules
 -- =====================================================================
 -- Realtime publication
 -- =====================================================================
+-- public.tasks is already in the supabase_realtime publication (added in
+-- 20260511000000_core_schema.sql). Nothing to do here.
 
-alter publication supabase_realtime add table public.tasks;
+-- Realtime DELETE events only carry the columns in a table's replica identity
+-- (default: PK). The Kanban client subscribes with `group_id=eq.…` filter, so
+-- the full row needs to be present on DELETE for the filter to match. Mirrors
+-- the messages-table fix in 20260515000000_messages_replica_identity_full.sql.
+alter table public.tasks replica identity full;

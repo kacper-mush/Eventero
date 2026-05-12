@@ -28,6 +28,14 @@ export function Sidebar({
   adminWorkspaceIds: string[];
 }) {
   const pathname = usePathname();
+  const [mobileOpen, setMobileOpen] = useState(false);
+  // Close the off-canvas drawer whenever navigation happens (adjust state
+  // during render rather than in an effect).
+  const [navAt, setNavAt] = useState(pathname);
+  if (navAt !== pathname) {
+    setNavAt(pathname);
+    setMobileOpen(false);
+  }
   const onNotifications = pathname === "/dashboard/notifications";
   const [newWorkspaceOpen, setNewWorkspaceOpen] = useState(false);
   const [newGroupWorkspaceId, setNewGroupWorkspaceId] = useState<string | null>(
@@ -50,15 +58,52 @@ export function Sidebar({
   }
 
   return (
-    <aside className="flex w-64 shrink-0 flex-col bg-brand-600 text-white">
-      <div className="px-4 py-4">
-        <Link
-          href="/dashboard"
-          className="text-lg font-bold tracking-tight text-white"
+    <>
+      {/* Mobile top bar with hamburger; hidden once the viewport is wide. */}
+      <div className="flex items-center gap-3 bg-brand-600 px-4 py-3 text-white md:hidden">
+        <button
+          type="button"
+          onClick={() => setMobileOpen(true)}
+          aria-label="Open menu"
+          className="flex h-8 w-8 items-center justify-center rounded text-xl transition hover:bg-white/10"
         >
+          ☰
+        </button>
+        <Link href="/dashboard" className="text-lg font-bold tracking-tight">
           Eventero
         </Link>
       </div>
+
+      {mobileOpen && (
+        <button
+          type="button"
+          aria-label="Close menu"
+          onClick={() => setMobileOpen(false)}
+          className="fixed inset-0 z-40 bg-black/40 md:hidden"
+        />
+      )}
+
+      <aside
+        className={`z-50 flex w-64 shrink-0 flex-col bg-brand-600 text-white transition-transform md:static md:translate-x-0 max-md:fixed max-md:inset-y-0 max-md:left-0 ${
+          mobileOpen ? "max-md:translate-x-0" : "max-md:-translate-x-full"
+        }`}
+      >
+        <div className="flex items-center justify-between px-4 py-4">
+          <Link
+            href="/dashboard"
+            className="text-lg font-bold tracking-tight text-white"
+          >
+            Eventero
+          </Link>
+          <button
+            type="button"
+            onClick={() => setMobileOpen(false)}
+            aria-label="Close menu"
+            className="flex h-7 w-7 items-center justify-center rounded text-lg transition hover:bg-white/10 md:hidden"
+          >
+            ✕
+          </button>
+        </div>
 
       <Link
         href="/dashboard/notifications"
@@ -203,6 +248,7 @@ export function Sidebar({
           Sign out
         </button>
       </form>
+      </aside>
 
       {newWorkspaceOpen && (
         <CreateWorkspaceDialog onClose={() => setNewWorkspaceOpen(false)} />
@@ -213,7 +259,7 @@ export function Sidebar({
           onClose={() => setNewGroupWorkspaceId(null)}
         />
       )}
-    </aside>
+    </>
   );
 }
 

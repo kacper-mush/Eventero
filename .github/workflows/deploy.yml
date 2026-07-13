@@ -21,7 +21,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: supabase/setup-cli@v2
+      - uses: supabase/setup-cli@v3
         with:
           # Pin so production deploys are reproducible. Bump intentionally.
           version: 2.98.2
